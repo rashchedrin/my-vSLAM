@@ -283,8 +283,8 @@ void TwoFrames2Cloud(cv::Mat frame1, cv::Mat frame2, PointCloud &points3D) {
       keypoints1_cor.push_back(cv::KeyPoint(corrected_points_1[i], 1.f));
       keypoints2_cor.push_back(cv::KeyPoint(corrected_points_2[i], 1.f));
     }
-    drawKeypoints(img1, keypoints1_cor, img1, Scalar({220, 240, 20}));
-    drawKeypoints(img2, keypoints2_cor, img2, Scalar({220, 240, 20}));
+    drawKeypoints(img1, keypoints1_cor, img1, Scalar({220, 20, 20}));
+    drawKeypoints(img2, keypoints2_cor, img2, Scalar({220, 20, 20}));
 
     for (int i_match = 0; i_match < N_matches; ++i_match) {
       line(display_matrix,
@@ -358,14 +358,6 @@ class OrbMarker {
                                &OrbMarker::subscription_callback, this);
     pub = nh_.advertise<sensor_msgs::PointCloud2>("output", 1);
     cv::namedWindow(OPENCV_WINDOW);
-  }
-
-  ~OrbMarker() {
-    cv::destroyWindow(OPENCV_WINDOW);
-  }
-
-  void subscription_callback(const sensor_msgs::ImageConstPtr &msg_in) {
-    show_orb(msg_in);
     Mat frame1, frame2;
     frame1 = imread("boxa1.png", CV_LOAD_IMAGE_COLOR);
     frame2 = imread("boxa2.png", CV_LOAD_IMAGE_COLOR);
@@ -382,8 +374,16 @@ class OrbMarker {
     msg_out.height = msg_out.width = 100;
     msg_out.header.stamp = ++stamp;
     TwoFrames2Cloud(frame1, frame2, msg_out);
+    cv::waitKey(100);
     pub.publish(msg_out);
+  }
 
+  ~OrbMarker() {
+    cv::destroyWindow(OPENCV_WINDOW);
+  }
+
+  void subscription_callback(const sensor_msgs::ImageConstPtr &msg_in) {
+    show_orb(msg_in);
   }
 
   void show_orb(const sensor_msgs::ImageConstPtr &msg) {
