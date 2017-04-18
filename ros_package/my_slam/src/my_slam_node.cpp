@@ -8,6 +8,11 @@
 #include "opencv2/xfeatures2d.hpp"
 #include "opencv2/opencv.hpp"
 
+#include "my_util.h"
+#include "my_types.h"
+#include "jacobians.h"
+
+
 //#include <pcl_ros/point_cloud.h>
 //#include <pcl/point_types.h>
 
@@ -15,24 +20,6 @@ using namespace cv;
 using namespace std;
 
 static const std::string OPENCV_WINDOW = "Image window 1";
-
-uint32_t uinthash(uint32_t x) {
-  x = ((x >> 16) ^ x) * 0x45d9f3b;
-  x = ((x >> 16) ^ x) * 0x45d9f3b;
-  x = (x >> 16) ^ x;
-  return x;
-}
-
-int32_t inthash(int32_t val, int32_t salt = 98262, int32_t low = 0, int32_t high = 256) {
-  val = uinthash(val) + uinthash(uinthash(salt));
-  val = val < 0 ? -val : val;
-  return (val % (high - low)) + low;
-}
-
-Scalar hashcolor(int32_t val, int32_t salt = 35434) {
-  return Scalar({inthash(val, inthash(salt + 1)), inthash(val, inthash(salt + 2)),
-                 inthash(val, inthash(salt + 3))});
-}
 
 template<typename MAT_TYPE>
 uint64_t mhash(Mat A) {
@@ -52,85 +39,7 @@ uint64_t mhash(Mat A) {
   return result;
 }
 
-class Quaternion {
- public:
-  double data[4];
-
-  double &w() {
-    return data[0];
-  }
-
-  double &i() {
-    return data[1];
-  }
-
-  double &j() {
-    return data[2];
-  }
-
-  double &k() {
-    return data[3];
-  }
-
-  Quaternion() {}
-
-  //Get Quaternion from angles
-  Quaternion(Point3d axis_angle) {
-    double theta = norm(axis_angle);
-    Point3d unit_vec = axis_angle / theta;
-    w() = cos(theta / 2);
-    i() = unit_vec.x * sin(theta / 2);
-    j() = unit_vec.y * sin(theta / 2);
-    k() = unit_vec.z * sin(theta / 2);
-  }
-
-  Quaternion(int w, int i, int j, int k) {
-    data[0] = w;
-    data[1] = i;
-    data[2] = j;
-    data[3] = k;
-  }
-
-  double &operator[](int k) {
-    return data[k];
-  }
-
-};
-
-Quaternion operator+(Quaternion a, Quaternion b) {
-  Quaternion res;
-  for (int i = 0; i < 4; i++) {
-    res[i] = a[i] + b[i];
-  }
-  return res;
-}
-
-//source: http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/code/
-Quaternion operator*(Quaternion q1, Quaternion q2) {
-  Quaternion res;
-  res[1] = q1[1] * q2[0] + q1[2] * q2[3] - q1[3] * q2[2] + q1[0] * q2[1];
-  res[2] = -q1[1] * q2[3] + q1[2] * q2[0] + q1[3] * q2[1] + q1[0] * q2[2];
-  res[3] = q1[1] * q2[2] - q1[2] * q2[1] + q1[3] * q2[0] + q1[0] * q2[3];
-  res[0] = -q1[1] * q2[1] - q1[2] * q2[2] - q1[3] * q2[3] + q1[0] * q2[0];
-  return res;
-}
-
-struct StateMean {
-  // w = world
-  // r = relative
-  Point3d position_w;         // 3
-  Quaternion direction_w;     // 4
-  Point3d velocity_w;         // 3
-  Point3d angular_velocity_r; // 3
-  std::vector<Point3d> feature_positions_w;  // 3*n
-  //total = 13+3*n
-  // /.n->4 => total = 25
-  const Mat asMat() {
-
-  }
-};
-
-StateMean state_predict(StateMean s0,
+StateMean predict_state(const StateMean &s0,
                         Point3d delta_vel,
                         Point3d delta_angular_vel,
                         double delta_time) {
@@ -143,310 +52,86 @@ StateMean state_predict(StateMean s0,
   return result;
 }
 
-Mat Q_df_over_dn(StateMean state, double dt){
-  double w1 = state.angular_velocity_r.x;
-  double w2 = state.angular_velocity_r.y;
-  double w3 = state.angular_velocity_r.z;
-  double q1 = state.direction_w.w();
-  double q2 = state.direction_w.i();
-  double q3 = state.direction_w.j();
-  double q4 = state.direction_w.k();
-  
-  double norm_w = pow(pow(w1,2) + pow(w2,2) + pow(w3,2),0.5);
-  double norm_w_squared = pow(w1,2) + pow(w2,2) + pow(w3,2);
-  
-  double result_array[13][6] = {
-      {dt,0,0,0,0,0},
-      {0,dt,0,0,0,0},
-      {0,dt,0,0,0,0},
-      {0,0,0,(dt*(-(q3*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1)) -
-          q4*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-          q2*cos(norm_w/2.)*pow(w1,2)*pow(norm_w_squared,-1) +
-          2*q3*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-          2*q4*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-          2*q2*pow(w1,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-          2*q2*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-          q1*w1*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(-(q2*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1)) -
-           q4*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-           q3*cos(norm_w/2.)*pow(w2,2)*pow(norm_w_squared,-1) +
-           2*q2*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q4*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q3*pow(w2,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q3*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q1*w2*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(-(q2*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1)) -
-           q3*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-           q4*cos(norm_w/2.)*pow(w3,2)*pow(norm_w_squared,-1) +
-           2*q2*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q3*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q4*pow(w3,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q4*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q1*w3*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.},
-      {0,0,0,(dt*(-(q4*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1)) +
-          q3*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-          q1*cos(norm_w/2.)*pow(w1,2)*pow(norm_w_squared,-1) +
-          2*q4*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-          2*q3*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-          2*q1*pow(w1,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-          2*q1*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-          q2*w1*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(q1*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-           q3*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-           q4*cos(norm_w/2.)*pow(w2,2)*pow(norm_w_squared,-1) -
-           2*q1*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q3*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q4*pow(w2,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q4*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q2*w2*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(q1*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-           q4*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-           q3*cos(norm_w/2.)*pow(w3,2)*pow(norm_w_squared,-1) -
-           2*q1*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q4*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q3*pow(w3,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q3*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q2*w3*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.},
-      {0,0,0,(dt*(q1*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-          q2*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-          q4*cos(norm_w/2.)*pow(w1,2)*pow(norm_w_squared,-1) -
-          2*q1*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-          2*q2*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-          2*q4*pow(w1,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-          2*q4*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-          q3*w1*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(q4*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-           q2*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-           q1*cos(norm_w/2.)*pow(w2,2)*pow(norm_w_squared,-1) -
-           2*q4*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q2*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q1*pow(w2,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q1*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q3*w2*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(q4*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-           q1*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-           q2*cos(norm_w/2.)*pow(w3,2)*pow(norm_w_squared,-1) -
-           2*q4*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q1*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q2*pow(w3,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q2*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q3*w3*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.},
-      {0,0,0,(dt*(q2*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-          q1*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) -
-          q3*cos(norm_w/2.)*pow(w1,2)*pow(norm_w_squared,-1) -
-          2*q2*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-          2*q1*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-          2*q3*pow(w1,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-          2*q3*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-          q4*w1*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(-(q3*w1*w2*cos(norm_w/2.)*pow(norm_w_squared,-1)) +
-           q1*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-           q2*cos(norm_w/2.)*pow(w2,2)*pow(norm_w_squared,-1) +
-           2*q3*w1*w2*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q1*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q2*pow(w2,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q2*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q4*w2*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.,
-       (dt*(-(q3*w1*w3*cos(norm_w/2.)*pow(norm_w_squared,-1)) +
-           q2*w2*w3*cos(norm_w/2.)*pow(norm_w_squared,-1) +
-           q1*cos(norm_w/2.)*pow(w3,2)*pow(norm_w_squared,-1) +
-           2*q3*w1*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q2*w2*w3*pow(norm_w_squared,-1.5)*sin(norm_w/2.) -
-           2*q1*pow(w3,2)*pow(norm_w_squared,-1.5)*sin(norm_w/2.) +
-           2*q1*pow(norm_w_squared,-0.5)*sin(norm_w/2.) -
-           q4*w3*pow(norm_w_squared,-0.5)*sin(norm_w/2.)))/2.},
-      {1,0,0,0,0,0},
-      {0,1,0,0,0,0},
-      {0,0,1,0,0,0},
-      {0,0,0,1,0,0},
-      {0,0,0,0,1,0},
-      {0,0,0,0,0,1}};
-  Mat result = Mat(13, 13, CV_32FC1, &result_array).clone();
+//Full matrices input
+Mat S_t_innovation_cov(const Mat &H_t, const Mat &Sigma_predicted, double Q_sensor_noise) {
+  Mat result = H_t * Sigma_predicted * H_t.t();
+  for (int i = 0; i < result.rows; i++) {
+    result.at<double>(i, i) += Q_sensor_noise;
+  }
   return result;
 }
 
-Mat Ft_df_over_dxcam(StateMean state, double dt) {
-  double norm_w = norm(state.angular_velocity_r);
-  double result_array[13][13] = {
-      {1, 0, 0, 0, 0, 0, 0, dt, 0, 0, 0, 0, 0},
-      {0, 1, 0, 0, 0, 0, 0, 0, dt, 0, 0, 0, 0},
-      {0, 0, 1, 0, 0, 0, 0, 0, 0, dt, 0, 0, 0},
-      {0, 0, 0, dt * cos(norm_w / 2.), -((dt * state.angular_velocity_r.x * sin(norm_w / 2.)) /
-          norm_w), -((dt * state.angular_velocity_r.y * sin(norm_w / 2.)) / norm_w),
-       -((dt * state.angular_velocity_r.z * sin(norm_w / 2.)) / norm_w), 0, 0, 0,
-       -(dt * (state.angular_velocity_r.x * (state.direction_w.i() * state.angular_velocity_r.x
-           + state.direction_w.j() * state.angular_velocity_r.y
-           + state.direction_w.k() * state.angular_velocity_r.z) * norm_w * cos(norm_w / 2.) +
-           (state.direction_w.w() * state.angular_velocity_r.x
-               * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                   + pow(state.angular_velocity_r.z, 2)) + 2
-               * (-(state.direction_w.j() * state.angular_velocity_r.x * state.angular_velocity_r.y)
-                   - state.direction_w.k() * state.angular_velocity_r.x * state.angular_velocity_r.z
-                   + state.direction_w.i()
-                       * (pow(state.angular_velocity_r.y, 2) + pow(state.angular_velocity_r.z, 2))))
-               * sin(norm_w / 2.))) /
-           (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                         + pow(state.angular_velocity_r.z, 2), 1.5)), -(dt
-          * (state.angular_velocity_r.y * (state.direction_w.i() * state.angular_velocity_r.x
-              + state.direction_w.j() * state.angular_velocity_r.y
-              + state.direction_w.k() * state.angular_velocity_r.z) * norm_w *
-              cos(norm_w / 2.) + (2 * state.direction_w.j()
-              * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.z, 2))
-              + state.angular_velocity_r.y
-                  * (-2 * state.direction_w.i() * state.angular_velocity_r.x
-                      - 2 * state.direction_w.k() * state.angular_velocity_r.z
-                      + state.direction_w.w()
-                          * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                              + pow(state.angular_velocity_r.z, 2)))) *
-              sin(norm_w / 2.))) / (2. * pow(
-          pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-              + pow(state.angular_velocity_r.z, 2), 1.5)),
-       -(dt * (state.angular_velocity_r.z * (state.direction_w.i() * state.angular_velocity_r.x
-           + state.direction_w.j() * state.angular_velocity_r.y
-           + state.direction_w.k() * state.angular_velocity_r.z) * norm_w * cos(norm_w / 2.) +
-           (2 * state.direction_w.k()
-               * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2))
-               + state.angular_velocity_r.z
-                   * (-2 * state.direction_w.i() * state.angular_velocity_r.x
-                       - 2 * state.direction_w.j() * state.angular_velocity_r.y
-                       + state.direction_w.w() * (pow(state.angular_velocity_r.x, 2)
-                           + pow(state.angular_velocity_r.y, 2)
-                           + pow(state.angular_velocity_r.z, 2)))) * sin(norm_w / 2.))) /
-           (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                         + pow(state.angular_velocity_r.z, 2), 1.5))},
-      {0, 0, 0,
-       (dt * state.angular_velocity_r.x * sin(norm_w / 2.)) / norm_w, dt * cos(norm_w / 2.),
-       (dt * state.angular_velocity_r.z * sin(norm_w / 2.)) / norm_w,
-       -((dt * state.angular_velocity_r.y * sin(norm_w / 2.)) / norm_w), 0, 0, 0,
-       (dt * (state.angular_velocity_r.x * (state.direction_w.w() * state.angular_velocity_r.x
-           - state.direction_w.k() * state.angular_velocity_r.y
-           + state.direction_w.j() * state.angular_velocity_r.z) * norm_w * cos(norm_w / 2.) -
-           (state.direction_w.i() * state.angular_velocity_r.x
-               * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                   + pow(state.angular_velocity_r.z, 2)) - 2
-               * (state.direction_w.k() * state.angular_velocity_r.x * state.angular_velocity_r.y
-                   - state.direction_w.j() * state.angular_velocity_r.x * state.angular_velocity_r.z
-                   + state.direction_w.w()
-                       * (pow(state.angular_velocity_r.y, 2) + pow(state.angular_velocity_r.z, 2))))
-               * sin(norm_w / 2.))) /
-           (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                         + pow(state.angular_velocity_r.z, 2), 1.5)), (dt
-          * (state.angular_velocity_r.y * (state.direction_w.w() * state.angular_velocity_r.x
-              - state.direction_w.k() * state.angular_velocity_r.y
-              + state.direction_w.j() * state.angular_velocity_r.z) * norm_w *
-              cos(norm_w / 2.) - (2 * state.direction_w.k()
-              * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.z, 2))
-              + state.angular_velocity_r.y * (2 * state.direction_w.w() * state.angular_velocity_r.x
-                  + 2 * state.direction_w.j() * state.angular_velocity_r.z + state.direction_w.i()
-                  * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                      + pow(state.angular_velocity_r.z, 2)))) *
-              sin(norm_w / 2.))) / (2. * pow(
-          pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-              + pow(state.angular_velocity_r.z, 2), 1.5)),
-       (dt * (state.angular_velocity_r.z * (state.direction_w.w() * state.angular_velocity_r.x
-           - state.direction_w.k() * state.angular_velocity_r.y
-           + state.direction_w.j() * state.angular_velocity_r.z) * norm_w * cos(norm_w / 2.) +
-           (2 * state.direction_w.j()
-               * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2))
-               - state.angular_velocity_r.z
-                   * (2 * state.direction_w.w() * state.angular_velocity_r.x
-                       - 2 * state.direction_w.k() * state.angular_velocity_r.y
-                       + state.direction_w.i() * (pow(state.angular_velocity_r.x, 2)
-                           + pow(state.angular_velocity_r.y, 2)
-                           + pow(state.angular_velocity_r.z, 2)))) * sin(norm_w / 2.))) /
-           (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                         + pow(state.angular_velocity_r.z, 2), 1.5))},
-      {0, 0, 0,
-       (dt * state.angular_velocity_r.y * sin(norm_w / 2.)) / norm_w,
-       -((dt * state.angular_velocity_r.z * sin(norm_w / 2.)) / norm_w), dt * cos(norm_w / 2.),
-       (dt * state.angular_velocity_r.x * sin(norm_w / 2.)) / norm_w, 0, 0, 0,
-       (dt * (state.angular_velocity_r.x * (state.direction_w.k() * state.angular_velocity_r.x
-           + state.direction_w.w() * state.angular_velocity_r.y
-           - state.direction_w.i() * state.angular_velocity_r.z) * norm_w * cos(norm_w / 2.) -
-           (2 * state.direction_w.w() * state.angular_velocity_r.x * state.angular_velocity_r.y
-               + state.direction_w.j() * state.angular_velocity_r.x
-                   * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                       + pow(state.angular_velocity_r.z, 2)) - 2
-               * (state.direction_w.i() * state.angular_velocity_r.x * state.angular_velocity_r.z
-                   + state.direction_w.k()
-                       * (pow(state.angular_velocity_r.y, 2) + pow(state.angular_velocity_r.z, 2))))
-               * sin(norm_w / 2.))) /
-           (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                         + pow(state.angular_velocity_r.z, 2), 1.5)), (dt
-          * (state.angular_velocity_r.y * (state.direction_w.k() * state.angular_velocity_r.x
-              + state.direction_w.w() * state.angular_velocity_r.y
-              - state.direction_w.i() * state.angular_velocity_r.z) * norm_w *
-              cos(norm_w / 2.) + (2 * state.direction_w.w()
-              * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.z, 2))
-              - state.angular_velocity_r.y * (2 * state.direction_w.k() * state.angular_velocity_r.x
-                  - 2 * state.direction_w.i() * state.angular_velocity_r.z + state.direction_w.j()
-                  * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                      + pow(state.angular_velocity_r.z, 2)))) *
-              sin(norm_w / 2.))) / (2. * pow(
-          pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-              + pow(state.angular_velocity_r.z, 2), 1.5)),
-       (dt * (state.angular_velocity_r.z * (state.direction_w.k() * state.angular_velocity_r.x
-           + state.direction_w.w() * state.angular_velocity_r.y
-           - state.direction_w.i() * state.angular_velocity_r.z) * norm_w * cos(norm_w / 2.) -
-           (2 * state.direction_w.i()
-               * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2))
-               + state.angular_velocity_r.z
-                   * (2 * state.direction_w.k() * state.angular_velocity_r.x
-                       + 2 * state.direction_w.w() * state.angular_velocity_r.y
-                       + state.direction_w.j() * (pow(state.angular_velocity_r.x, 2)
-                           + pow(state.angular_velocity_r.y, 2)
-                           + pow(state.angular_velocity_r.z, 2)))) * sin(norm_w / 2.))) /
-           (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                         + pow(state.angular_velocity_r.z, 2), 1.5))},
-      {0, 0, 0,
-       (dt * state.angular_velocity_r.z * sin(norm_w / 2.)) / norm_w,
-       (dt * state.angular_velocity_r.y * sin(norm_w / 2.)) / norm_w,
-       -((dt * state.angular_velocity_r.x * sin(norm_w / 2.)) / norm_w), dt * cos(norm_w / 2.), 0,
-       0, 0,
-       -(dt * (state.angular_velocity_r.x * (state.direction_w.j() * state.angular_velocity_r.x
-           - state.direction_w.i() * state.angular_velocity_r.y
-           - state.direction_w.w() * state.angular_velocity_r.z) * norm_w * cos(norm_w / 2.) +
-           (state.direction_w.k() * state.angular_velocity_r.x
-               * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                   + pow(state.angular_velocity_r.z, 2)) + 2
-               * (state.direction_w.i() * state.angular_velocity_r.x * state.angular_velocity_r.y
-                   + state.direction_w.w() * state.angular_velocity_r.x * state.angular_velocity_r.z
-                   + state.direction_w.j()
-                       * (pow(state.angular_velocity_r.y, 2) + pow(state.angular_velocity_r.z, 2))))
-               * sin(norm_w / 2.))) /
-           (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                         + pow(state.angular_velocity_r.z, 2), 1.5)), -(dt
-          * (-(state.angular_velocity_r.y * (-(state.direction_w.j() * state.angular_velocity_r.x)
-              + state.direction_w.i() * state.angular_velocity_r.y
-              + state.direction_w.w() * state.angular_velocity_r.z) * norm_w *
-              cos(norm_w / 2.)) + (-2 * state.direction_w.i()
-              * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.z, 2)) +
-              state.angular_velocity_r.y * (-2 * state.direction_w.j() * state.angular_velocity_r.x
-                  + 2 * state.direction_w.w() * state.angular_velocity_r.z + state.direction_w.k()
-                  * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                      + pow(state.angular_velocity_r.z, 2)))) * sin(norm_w / 2.))) /
-          (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                        + pow(state.angular_velocity_r.z, 2), 1.5)), -(dt
-          * (-(state.angular_velocity_r.z * (-(state.direction_w.j() * state.angular_velocity_r.x)
-              + state.direction_w.i() * state.angular_velocity_r.y
-              + state.direction_w.w() * state.angular_velocity_r.z) * norm_w *
-              cos(norm_w / 2.)) + (-2 * state.direction_w.w()
-              * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)) +
-              state.angular_velocity_r.z * (-2 * state.direction_w.j() * state.angular_velocity_r.x
-                  + 2 * state.direction_w.i() * state.angular_velocity_r.y + state.direction_w.k()
-                  * (pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                      + pow(state.angular_velocity_r.z, 2)))) * sin(norm_w / 2.))) /
-          (2. * pow(pow(state.angular_velocity_r.x, 2) + pow(state.angular_velocity_r.y, 2)
-                        + pow(state.angular_velocity_r.z, 2), 1.5))},
-      {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-  };
-  Mat result = Mat(13, 13, CV_32FC1, &result_array).clone();
+vector<Point2d> predict_points(const StateMean &s, const Mat &camIntrinsics) {
+  vector<Point2d> result;
+  for (int i_pt = 0; i_pt < s.feature_positions_w.size(); ++i_pt) {
+    double q1 = s.direction_w.w();
+    double q2 = s.direction_w.i();
+    double q3 = s.direction_w.j();
+    double q4 = s.direction_w.k();
+    double r1 = s.position_w.x;
+    double r2 = s.position_w.y;
+    double r3 = s.position_w.z;
+    double y1 = s.feature_positions_w[i_pt].x;
+    double y2 = s.feature_positions_w[i_pt].y;
+    double y3 = s.feature_positions_w[i_pt].z;
+    double alpha_x = camIntrinsics.at<double>(0, 0);
+    double alpha_y = camIntrinsics.at<double>(1, 1);
+    double x0 = camIntrinsics.at<double>(0, 2);
+    double y0 = camIntrinsics.at<double>(1, 2);
+
+    double pred_x = x0 + (((pow(q3, 2) + pow(q4, 2)) * (r1 - y1) +
+        pow(q1, 2) * (-r1 + y1) + pow(q2, 2) * (-r1 + y1) +
+        2 * q1 * (q4 * (-r2 + y2) + q3 * (r3 - y3)) +
+        2 * q2 * (-(q3 * r2) - q4 * r3 + q3 * y2 + q4 * y3)) * alpha_x) /
+        (2 * q3 * q4 * r2 - pow(q3, 2) * r3 + pow(q4, 2) * r3 +
+            2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
+            2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
+            pow(q1, 2) * (r3 - y3) + pow(q3, 2) * y3 -
+            pow(q4, 2) * y3 + pow(q2, 2) * (-r3 + y3));
+    double pred_y = y0 + ((pow(q3, 2) * r2 - pow(q4, 2) * r2 + 2 * q3 * q4 * r3 +
+        2 * q1 * q4 * (-r1 + y1) + pow(q1, 2) * (r2 - y2) -
+        pow(q3, 2) * y2 + pow(q4, 2) * y2 +
+        pow(q2, 2) * (-r2 + y2) +
+        2 * q2 * (q3 * (r1 - y1) + q1 * (r3 - y3)) - 2 * q3 * q4 * y3) *
+        alpha_y) / (-2 * q3 * q4 * r2 + pow(q3, 2) * r3 -
+        pow(q4, 2) * r3 + 2 * q2 * q4 * (-r1 + y1) +
+        2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) + 2 * q3 * q4 * y2 +
+        pow(q2, 2) * (r3 - y3) - pow(q3, 2) * y3 +
+        pow(q4, 2) * y3 + pow(q1, 2) * (-r3 + y3));
+    result.push_back(Point2d(pred_x, pred_y));
+  }
   return result;
+}
+
+//13 x 13
+Mat predict_Sigma_cam(const Mat &Sigma_cam,
+                      const StateMean &s,
+                      double delta_time,
+                      const Mat &Pn_noise_cov) {
+  Mat F = Ft_df_over_dxcam(s, delta_time);
+  Mat Q = Q_df_over_dn(s, delta_time);
+  return F * Sigma_cam * F.t() + Q * Pn_noise_cov * Q.t();
+}
+
+Mat predict_Sigma_full(const Mat &Sigma_full,
+                       const StateMean &s,
+                       double delta_time,
+                       const Mat &Pn_noise_cov) {
+  Mat result = Sigma_full.clone();
+  Mat Sigma_cam_area = result(Rect(0, 0, 13, 13));
+  Mat Sigma_cam_pred = predict_Sigma_cam(Sigma_cam_area, s, delta_time, Pn_noise_cov);
+  Sigma_cam_pred.copyTo(Sigma_cam_area);
+  return result;
+}
+
+Mat Kalman_Gain(const Mat &Sigma, const Mat &H_t, double Q_sensor_noise,
+                const StateMean &state,
+                double delta_time,
+                const Mat &Pn_noise_cov) {
+  Mat Sigma_predicted = predict_Sigma_full(Sigma, state, delta_time, Pn_noise_cov);
+  Mat innovation_cov = S_t_innovation_cov(H_t, Sigma_predicted, Q_sensor_noise);
+
+  return Sigma * H_t.t() * innovation_cov.inv();
 }
 
 class MY_SLAM {
@@ -459,7 +144,7 @@ class MY_SLAM {
 
   StateMean x_state_mean;
   Mat Sigma_state_cov;
-  Mat Pn_noise_cov;
+  Mat Pn_noise_cov; // 6 x 6
 
 
 //  Mat known_descriptors_ORB;
@@ -479,6 +164,7 @@ class MY_SLAM {
       edgeThreshold
   );*/
 
+//<editor-fold desc="descriptors">
   unsigned char known_descriptors_array_ORB[4][32] = {
       {188, 65, 60, 17, 171, 217, 125, 10, 238, 174, 80, 171, 253, 220, 3, 190, 230, 114, 176, 6,
        108, 110, 247, 62, 72, 108, 181, 168, 100, 170, 203, 206},
@@ -570,7 +256,11 @@ class MY_SLAM {
        6}
   };
   const Mat known_descriptors_SIFT = Mat(4, 128, CV_32FC1, &known_descriptors_array_SIFT);
-
+//</editor-fold>
+  double camera_intrinsic_array[3][3] = {{-1.0166722592048205e+03, 0., 6.3359083662958744e+02},
+                                         {0., -1.0166722592048205e+03, 3.5881262886802512e+02},
+                                         {0., 0., 1.}};
+  const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array);
  public:
 
   MY_SLAM()
@@ -586,15 +276,33 @@ class MY_SLAM {
 //    msg_out.header.stamp = ++stamp;
 
 
-    Sigma_state_cov = Mat::zeros(25, 25, CV_32F); //may be ones?
+    Sigma_state_cov = Mat::eye(25, 25, CV_64F); //may be zeros?
+    Pn_noise_cov = Mat::eye(6, 6, CV_64F); //todo: init properly
     x_state_mean.angular_velocity_r = Point3d(0, 0, 0);
-    x_state_mean.direction_w = Quaternion(1, 0, 0, 0);
+    x_state_mean.direction_w = Quaternion(1, 0, 0, 0); // Zero rotation
     x_state_mean.position_w = Point3d(0, 0, 0);
     x_state_mean.velocity_w = Point3d(0, 0, 0);
-    x_state_mean.feature_positions_w.push_back(Point3d(-40, 128.3, 4)); //cm
-    x_state_mean.feature_positions_w.push_back(Point3d(-40, 128.3, 41));
-    x_state_mean.feature_positions_w.push_back(Point3d(40, 128.3, 41));
-    x_state_mean.feature_positions_w.push_back(Point3d(40, 128.3, 4));
+    /* Coordinates system:
+     *            /^ z
+     *         /
+     *      /
+     *   /
+     * 0------------------------>x
+     * |
+     * |
+     * |
+     * |
+     * |
+     * |
+     * |
+     * V y
+     *
+     * In local coordinates, camera looks from 0 to Z axis. Like here.
+     */
+    x_state_mean.feature_positions_w.push_back(Point3d(-40, -4, 128.3)); //cm
+    x_state_mean.feature_positions_w.push_back(Point3d(-40, -41, 128.3));
+    x_state_mean.feature_positions_w.push_back(Point3d(40, -41, 128.3));
+    x_state_mean.feature_positions_w.push_back(Point3d(40, -4, 128.3));
 
   }
 
@@ -641,8 +349,6 @@ class MY_SLAM {
         fastThreshold
     );
 
-    /*int minHessian = 400;
-    Ptr<xfeatures2d::SURF> detector = xfeatures2d::SURF::create(minHessian);*/
     Mat kp_descriptors;
     detector->detectAndCompute(cv_ptr->image, noArray(), key_points, kp_descriptors);
 
@@ -682,7 +388,7 @@ class MY_SLAM {
     }
      */
 
-
+    vector<Point2d> observations;
     for (int i_known_kp = 0; i_known_kp < 4; ++i_known_kp) {
       double min_distance =
           norm(known_descriptors.row(i_known_kp), kp_descriptors.row(0), norm_type);
@@ -690,7 +396,7 @@ class MY_SLAM {
       for (int i_kp = 0; i_kp < key_points.size(); ++i_kp) {
         double distance =
             norm(known_descriptors.row(i_known_kp), kp_descriptors.row(i_kp), norm_type);
-        cout << distance << " ";
+//        cout << distance << " ";
         if (distance < min_distance) {
           min_distance = distance;
           closest_id = i_kp;
@@ -707,6 +413,7 @@ class MY_SLAM {
         case 3: color = Scalar(0, 0, 0);
           break;
       }
+      observations.push_back(key_points[closest_id].pt);
       circle(cv_ptr->image, key_points[closest_id].pt, 1, color);
       circle(cv_ptr->image, key_points[closest_id].pt, 2, color);
       circle(cv_ptr->image, key_points[closest_id].pt, 3, color);
@@ -714,16 +421,51 @@ class MY_SLAM {
       circle(cv_ptr->image, key_points[closest_id].pt, 5, color);
       circle(cv_ptr->image, key_points[closest_id].pt, 6, color);
       circle(cv_ptr->image, key_points[closest_id].pt, 7, color);
-      cout << kp_descriptors.row(closest_id) << min_distance << endl;
+//      cout << kp_descriptors.row(closest_id) << min_distance << endl;
     }
 //    double sum = cv::sum( kp_descriptors )[0];
-    cout << mhash<char>(kp_descriptors) << endl << mhash<char>(known_descriptors) << endl;
+//    cout << mhash<char>(kp_descriptors) << endl << mhash<char>(known_descriptors) << endl;
     // Update GUI Window
-    cv::imshow(OPENCV_WINDOW, cv_ptr->image);
-    cout << endl;
+//    cout << endl;
 //    cout<<kp_descriptors<<endl;
-    cv::waitKey();
 
+    vector<Point2d> predicted_points = predict_points(x_state_mean, camera_intrinsic);
+    for (int i = 0; i < predicted_points.size(); i++) {
+      cout<<predicted_points[i].x<<" "<<predicted_points[i].y<<endl;
+      Point2d c1 = Point2d(5, 5);
+      Point2d c2 = Point2d(5, -5);
+      line(cv_ptr->image,
+           Point2d(predicted_points[i].x, predicted_points[i].y) - c1,
+           Point2d(predicted_points[i].x, predicted_points[i].y) + c1,
+           Scalar(0, 255, 0),
+           2);
+      line(cv_ptr->image,
+           Point2d(predicted_points[i].x, predicted_points[i].y) - c2,
+           Point2d(predicted_points[i].x, predicted_points[i].y) + c2,
+           Scalar(0, 255, 0),
+           2);
+    }
+
+    //update step
+    Mat H_t = H_t_Jacobian_of_observations(x_state_mean, camera_intrinsic);
+    double delta_time = 1; //todo: estimate properly
+    Mat KalmanGain = Kalman_Gain(Sigma_state_cov,
+                                 H_t,
+                                 2.5,x_state_mean,delta_time, Pn_noise_cov);
+    Mat observations_diff = Mat(x_state_mean.feature_positions_w.size() * 2, 1, CV_64F, double(0));
+    for (int i_obs = 0; i_obs < x_state_mean.feature_positions_w.size(); ++i_obs) {
+      observations_diff.at<double>(i_obs * 2, 0) =
+          observations[i_obs].x - predicted_points[i_obs].x;
+      observations_diff.at<double>(i_obs * 2 + 1, 0) =
+          observations[i_obs].y - predicted_points[i_obs].y;
+    }
+    Mat k_times_o = KalmanGain * observations_diff;
+    Mat statemat = state2mat(x_state_mean);
+    x_state_mean = StateMean(statemat + k_times_o);
+    //Todo: calculate sigma
+
+    cv::imshow(OPENCV_WINDOW, cv_ptr->image);
+    cv::waitKey(1);
   }
 };
 
