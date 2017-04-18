@@ -320,6 +320,7 @@ Mat Ft_df_over_dxcam(const StateMean &state, double dt) {
       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
   };
   //todo: think about removing .clone()
+  cout<<result_array[3][3]<<endl;
   Mat result = Mat(13, 13, CV_64F, &result_array).clone();
   return result;
 }

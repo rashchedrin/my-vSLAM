@@ -19,6 +19,8 @@
 using namespace cv;
 using namespace std;
 
+const double pi = 3.13159265358979323;
+
 static const std::string OPENCV_WINDOW = "Image window 1";
 
 template<typename MAT_TYPE>
@@ -109,6 +111,7 @@ Mat predict_Sigma_cam(const Mat &Sigma_cam,
                       double delta_time,
                       const Mat &Pn_noise_cov) {
   Mat F = Ft_df_over_dxcam(s, delta_time);
+  display_mat(F);
   Mat Q = Q_df_over_dn(s, delta_time);
   return F * Sigma_cam * F.t() + Q * Pn_noise_cov * Q.t();
 }
@@ -278,7 +281,8 @@ class MY_SLAM {
 
     Sigma_state_cov = Mat::eye(25, 25, CV_64F); //may be zeros?
     Pn_noise_cov = Mat::eye(6, 6, CV_64F); //todo: init properly
-    x_state_mean.angular_velocity_r = Point3d(0, 0, 0);
+    x_state_mean.angular_velocity_r =
+        Point3d(2 * pi, 0, 0); // no rotation, 2*pi needed to eliminate indeterminance
     x_state_mean.direction_w = Quaternion(1, 0, 0, 0); // Zero rotation
     x_state_mean.position_w = Point3d(0, 0, 0);
     x_state_mean.velocity_w = Point3d(0, 0, 0);
@@ -405,20 +409,16 @@ class MY_SLAM {
            Scalar(0, 255, 0),
            2);
     }
-    cout<<"state:"<<state2mat(x_state_mean)<<endl;
+    cout << "state:" << state2mat(x_state_mean) << endl;
 
     //update step
     Mat H_t = H_t_Jacobian_of_observations(x_state_mean, camera_intrinsic);
-    for(int ir = 0; ir < H_t.rows; ++ir){
-      for(int ic = 0; ic < H_t.cols; ++ic){
-        cout<<H_t.at<double>(ir,ic)<<" ";
-      }
-      cout<<endl;
-    }
+
     double delta_time = 1; //todo: estimate properly
     Mat KalmanGain = Kalman_Gain(Sigma_state_cov,
                                  H_t,
                                  2.5, x_state_mean, delta_time, Pn_noise_cov);
+//    display_mat(KalmanGain);
     Mat observations_diff = Mat(x_state_mean.feature_positions_w.size() * 2, 1, CV_64F, double(0));
     for (int i_obs = 0; i_obs < x_state_mean.feature_positions_w.size(); ++i_obs) {
       observations_diff.at<double>(i_obs * 2, 0) =
@@ -434,7 +434,7 @@ class MY_SLAM {
         Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
         * predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
     cv::imshow(OPENCV_WINDOW, cv_ptr->image);
-    cv::waitKey();
+    cv::waitKey(1);
   }
 };
 

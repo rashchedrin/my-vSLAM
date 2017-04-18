@@ -17,4 +17,13 @@ int32_t inthash(int32_t val, int32_t salt = 98262, int32_t low = 0, int32_t high
 
 Scalar hashcolor(int32_t val, int32_t salt = 35434);
 
+void display_mat(Mat m) {
+  cout<<m.rows<<" x "<<m.cols<<endl;
+  for (int ir = 0; ir < m.rows; ++ir) {
+    for (int ic = 0; ic < m.cols; ++ic) {
+      cout << m.at<double>(ir, ic) << " ";
+    }
+    cout << endl;
+  }
+}
 #endif //MY_SLAM_MY_UTIL_H
