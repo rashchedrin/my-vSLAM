@@ -343,199 +343,208 @@ Mat H_t_Jacobian_of_observations(const StateMean &s, const Mat &camIntrinsics) {
     double y3 = s.feature_positions_w[i_pt].z;
     double alpha_x = camIntrinsics.at<double>(0, 0);
     double alpha_y = camIntrinsics.at<double>(1, 1);
-    double dhi_over_dx_cam_array[2][7] =
-        {
-            {-(alpha_x * (pow(q1, 2) + pow(q2, 2) + pow(q3, 2) +
-                pow(q4, 2)) * (2 * q1 * q2 * (-r2 + y2) +
-                2 * q3 * q4 * (-r2 + y2) + (r3 - y3) * pow(q1, 2) +
-                (r3 - y3) * pow(q3, 2) -
-                (r3 - y3) * (pow(q2, 2) + pow(q4, 2))) *
-                pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                    2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                    (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                    r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                    y3 * pow(q4, 2), -2)),
-             -2 * alpha_x * (q1 * (q2 * (r1 - y1) + q4 * (r3 - y3)) +
-                 q3 * (q4 * (r1 - y1) + q2 * (-r3 + y3))) *
-                 (pow(q1, 2) + pow(q2, 2) + pow(q3, 2) + pow(q4, 2)) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2),
-             alpha_x * ((q3 - q4) * (q3 + q4) * (r1 - y1) +
-                 2 * q1 * q4 * (r2 - y2) + 2 * q2 * q3 * (-r2 + y2) +
-                 (r1 - y1) * pow(q1, 2) + (-r1 + y1) * pow(q2, 2)) *
-                 (pow(q1, 2) + pow(q2, 2) + pow(q3, 2) + pow(q4, 2)) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2),
-             alpha_x * (-2 * (q1 * (r1 - y1) + q4 * (r2 - y2) +
-                 q3 * (-r3 + y3)) *
-                 (2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2)) -
-                 2 * (q3 * (r1 - y1) + q2 * (-r2 + y2) + q1 * (r3 - y3)) *
-                     (2 * q1 * (q4 * (-r2 + y2) + q3 * (r3 - y3)) +
-                         2 * q2 * (-(q3 * r2) - q4 * r3 + q3 * y2 + q4 * y3) +
-                         (-r1 + y1) * pow(q1, 2) + (-r1 + y1) * pow(q2, 2) +
-                         (r1 - y1) * (pow(q3, 2) + pow(q4, 2)))) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2),
-             alpha_x * (-2 * (q2 * (r1 - y1) + q3 * (r2 - y2) + q4 * (r3 - y3)) *
-                 (2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2)) -
-                 2 * (q4 * (r1 - y1) + q1 * (-r2 + y2) + q2 * (-r3 + y3)) *
-                     (2 * q1 * (q4 * (-r2 + y2) + q3 * (r3 - y3)) +
-                         2 * q2 * (-(q3 * r2) - q4 * r3 + q3 * y2 + q4 * y3) +
-                         (-r1 + y1) * pow(q1, 2) + (-r1 + y1) * pow(q2, 2) +
-                         (r1 - y1) * (pow(q3, 2) + pow(q4, 2)))) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2),
-             alpha_x * (2 * (q3 * (r1 - y1) + q2 * (-r2 + y2) + q1 * (r3 - y3)) *
-                 (2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2)) -
-                 2 * (q1 * (r1 - y1) + q4 * (r2 - y2) + q3 * (-r3 + y3)) *
-                     (2 * q1 * (q4 * (-r2 + y2) + q3 * (r3 - y3)) +
-                         2 * q2 * (-(q3 * r2) - q4 * r3 + q3 * y2 + q4 * y3) +
-                         (-r1 + y1) * pow(q1, 2) + (-r1 + y1) * pow(q2, 2) +
-                         (r1 - y1) * (pow(q3, 2) + pow(q4, 2)))) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2),
-             alpha_x * (2 * (q4 * (r1 - y1) + q1 * (-r2 + y2) +
-                 q2 * (-r3 + y3)) *
-                 (2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2)) -
-                 2 * (q2 * (r1 - y1) + q3 * (r2 - y2) + q4 * (r3 - y3)) *
-                     (2 * q1 * (q4 * (-r2 + y2) + q3 * (r3 - y3)) +
-                         2 * q2 * (-(q3 * r2) - q4 * r3 + q3 * y2 + q4 * y3) +
-                         (-r1 + y1) * pow(q1, 2) + (-r1 + y1) * pow(q2, 2) +
-                         (r1 - y1) * (pow(q3, 2) + pow(q4, 2)))) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2)},
-            {2 * alpha_y * (q2 * (q4 * (-r2 + y2) + q3 * (r3 - y3)) +
-                q1 * (q3 * (r2 - y2) + q4 * (r3 - y3))) *
-                (pow(q1, 2) + pow(q2, 2) + pow(q3, 2) + pow(q4, 2)) *
-                pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                    2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                    (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                    r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                    y3 * pow(q4, 2), -2),
-             -(alpha_y * (pow(q1, 2) + pow(q2, 2) + pow(q3, 2) +
-                 pow(q4, 2)) * (2 * q1 * q3 * (r1 - y1) +
-                 2 * q2 * q4 * (-r1 + y1) + (r3 - y3) * pow(q1, 2) +
-                 (r3 - y3) * pow(q2, 2) -
-                 (r3 - y3) * (pow(q3, 2) + pow(q4, 2))) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2)),
-             alpha_y * (pow(q1, 2) + pow(q2, 2) + pow(q3, 2) + pow(q4, 2)) *
-                 (2 * q2 * q3 * (-r1 + y1) + 2 * q1 * q4 * (-r1 + y1) +
-                     (r2 - y2) * pow(q1, 2) + (r2 - y2) * pow(q2, 2) -
-                     (r2 - y2) * (pow(q3, 2) + pow(q4, 2))) *
-                 pow(2 * q3 * q4 * r2 + 2 * q2 * q4 * (r1 - y1) - 2 * q3 * q4 * y2 +
-                     2 * q1 * (q3 * (r1 - y1) + q2 * (-r2 + y2)) +
-                     (r3 - y3) * pow(q1, 2) + (-r3 + y3) * pow(q2, 2) -
-                     r3 * pow(q3, 2) + y3 * pow(q3, 2) + r3 * pow(q4, 2) -
-                     y3 * pow(q4, 2), -2),
-             alpha_y * (2 * (q3 * (r1 - y1) + q2 * (-r2 + y2) + q1 * (r3 - y3)) *
-                 (2 * q3 * q4 * r3 + 2 * q1 * q4 * (-r1 + y1) +
-                     2 * q2 * (q3 * (r1 - y1) + q1 * (r3 - y3)) -
-                     2 * q3 * q4 * y3 + (r2 - y2) * pow(q1, 2) +
-                     (-r2 + y2) * pow(q2, 2) + r2 * pow(q3, 2) -
-                     y2 * pow(q3, 2) - r2 * pow(q4, 2) + y2 * pow(q4, 2)) +
-                 2 * (q4 * (-r1 + y1) + q1 * (r2 - y2) + q2 * (r3 - y3)) *
-                     (-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                         2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) +
-                         2 * q3 * q4 * y2 + (-r3 + y3) * pow(q1, 2) +
-                         (r3 - y3) * pow(q2, 2) + r3 * pow(q3, 2) -
-                         y3 * pow(q3, 2) - r3 * pow(q4, 2) + y3 * pow(q4, 2))) *
-                 pow(-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                     2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) + 2 * q3 * q4 * y2 +
-                     (-r3 + y3) * pow(q1, 2) + (r3 - y3) * pow(q2, 2) +
-                     r3 * pow(q3, 2) - y3 * pow(q3, 2) - r3 * pow(q4, 2) +
-                     y3 * pow(q4, 2), -2),
-             alpha_y * (-2 * (q4 * (-r1 + y1) + q1 * (r2 - y2) +
-                 q2 * (r3 - y3)) *
-                 (2 * q3 * q4 * r3 + 2 * q1 * q4 * (-r1 + y1) +
-                     2 * q2 * (q3 * (r1 - y1) + q1 * (r3 - y3)) -
-                     2 * q3 * q4 * y3 + (r2 - y2) * pow(q1, 2) +
-                     (-r2 + y2) * pow(q2, 2) + r2 * pow(q3, 2) -
-                     y2 * pow(q3, 2) - r2 * pow(q4, 2) + y2 * pow(q4, 2)) +
-                 2 * (q3 * (r1 - y1) + q2 * (-r2 + y2) + q1 * (r3 - y3)) *
-                     (-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                         2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) +
-                         2 * q3 * q4 * y2 + (-r3 + y3) * pow(q1, 2) +
-                         (r3 - y3) * pow(q2, 2) + r3 * pow(q3, 2) -
-                         y3 * pow(q3, 2) - r3 * pow(q4, 2) + y3 * pow(q4, 2))) *
-                 pow(-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                     2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) + 2 * q3 * q4 * y2 +
-                     (-r3 + y3) * pow(q1, 2) + (r3 - y3) * pow(q2, 2) +
-                     r3 * pow(q3, 2) - y3 * pow(q3, 2) - r3 * pow(q4, 2) +
-                     y3 * pow(q4, 2), -2),
-             alpha_y * (-2 * (q1 * (-r1 + y1) + q4 * (-r2 + y2) +
-                 q3 * (r3 - y3)) *
-                 (2 * q3 * q4 * r3 + 2 * q1 * q4 * (-r1 + y1) +
-                     2 * q2 * (q3 * (r1 - y1) + q1 * (r3 - y3)) -
-                     2 * q3 * q4 * y3 + (r2 - y2) * pow(q1, 2) +
-                     (-r2 + y2) * pow(q2, 2) + r2 * pow(q3, 2) -
-                     y2 * pow(q3, 2) - r2 * pow(q4, 2) + y2 * pow(q4, 2)) +
-                 2 * (q2 * (r1 - y1) + q3 * (r2 - y2) + q4 * (r3 - y3)) *
-                     (-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                         2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) +
-                         2 * q3 * q4 * y2 + (-r3 + y3) * pow(q1, 2) +
-                         (r3 - y3) * pow(q2, 2) + r3 * pow(q3, 2) -
-                         y3 * pow(q3, 2) - r3 * pow(q4, 2) + y3 * pow(q4, 2))) *
-                 pow(-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                     2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) + 2 * q3 * q4 * y2 +
-                     (-r3 + y3) * pow(q1, 2) + (r3 - y3) * pow(q2, 2) +
-                     r3 * pow(q3, 2) - y3 * pow(q3, 2) - r3 * pow(q4, 2) +
-                     y3 * pow(q4, 2), -2),
-             alpha_y * (-2 * (q2 * (-r1 + y1) + q3 * (-r2 + y2) +
-                 q4 * (-r3 + y3)) *
-                 (2 * q3 * q4 * r3 + 2 * q1 * q4 * (-r1 + y1) +
-                     2 * q2 * (q3 * (r1 - y1) + q1 * (r3 - y3)) -
-                     2 * q3 * q4 * y3 + (r2 - y2) * pow(q1, 2) +
-                     (-r2 + y2) * pow(q2, 2) + r2 * pow(q3, 2) -
-                     y2 * pow(q3, 2) - r2 * pow(q4, 2) + y2 * pow(q4, 2)) +
-                 2 * (q1 * (-r1 + y1) + q4 * (-r2 + y2) + q3 * (r3 - y3)) *
-                     (-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                         2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) +
-                         2 * q3 * q4 * y2 + (-r3 + y3) * pow(q1, 2) +
-                         (r3 - y3) * pow(q2, 2) + r3 * pow(q3, 2) -
-                         y3 * pow(q3, 2) - r3 * pow(q4, 2) + y3 * pow(q4, 2))) *
-                 pow(-2 * q3 * q4 * r2 + 2 * q2 * q4 * (-r1 + y1) +
-                     2 * q1 * (q3 * (-r1 + y1) + q2 * (r2 - y2)) + 2 * q3 * q4 * y2 +
-                     (-r3 + y3) * pow(q1, 2) + (r3 - y3) * pow(q2, 2) +
-                     r3 * pow(q3, 2) - y3 * pow(q3, 2) - r3 * pow(q4, 2) +
-                     y3 * pow(q4, 2), -2)}};
+    double norm_q_squared = q1*q1 + q2*q2 + q3*q3 + q4*q4;
+    double dhi_over_dx_cam_array[2][7] = {
+            {-(((norm_q_squared)*
+                (2*q1*q2*(-r2 + y2) + 2*q3*q4*(-r2 + y2) +
+                    pow(q1,2)*(r3 - y3) +
+                    pow(q3,2)*(r3 - y3) -
+                    (pow(q2,2) + pow(q4,2))*(r3 - y3))*alpha_x)/
+                pow(2*q3*q4*r2 - pow(q3,2)*r3 +
+                    pow(q4,2)*r3 + 2*q2*q4*(r1 - y1) -
+                    2*q3*q4*y2 + 2*q1*
+                    (q3*(r1 - y1) + q2*(-r2 + y2)) +
+                    pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                    pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2)),
+             (-2*(norm_q_squared)*(q1*(q2*(r1 - y1) + q4*(r3 - y3)) +
+                 q3*(q4*(r1 - y1) + q2*(-r3 + y3)))*alpha_x)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2),
+             ((norm_q_squared)*(pow(q1,2)*(r1 - y1) +
+                 (q3 - q4)*(q3 + q4)*(r1 - y1) +
+                 pow(q2,2)*(-r1 + y1) + 2*q1*q4*(r2 - y2) +
+                 2*q2*q3*(-r2 + y2))*alpha_x)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2),
+             ((-2*(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                 2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                 2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                 pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                 pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3))*
+                 (q1*(r1 - y1) + q4*(r2 - y2) + q3*(-r3 + y3)) -
+                 2*(q3*(r1 - y1) + q2*(-r2 + y2) + q1*(r3 - y3))*
+                     ((pow(q3,2) + pow(q4,2))*(r1 - y1) +
+                         pow(q1,2)*(-r1 + y1) +
+                         pow(q2,2)*(-r1 + y1) +
+                         2*q1*(q4*(-r2 + y2) + q3*(r3 - y3)) +
+                         2*q2*(-(q3*r2) - q4*r3 + q3*y2 + q4*y3)))*alpha_x)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2),
+             ((-2*(q2*(r1 - y1) + q3*(r2 - y2) + q4*(r3 - y3))*
+                 (2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3)) -
+                 2*(q4*(r1 - y1) + q1*(-r2 + y2) + q2*(-r3 + y3))*
+                     ((pow(q3,2) + pow(q4,2))*(r1 - y1) +
+                         pow(q1,2)*(-r1 + y1) +
+                         pow(q2,2)*(-r1 + y1) +
+                         2*q1*(q4*(-r2 + y2) + q3*(r3 - y3)) +
+                         2*q2*(-(q3*r2) - q4*r3 + q3*y2 + q4*y3)))*alpha_x)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2),
+             ((2*(q3*(r1 - y1) + q2*(-r2 + y2) + q1*(r3 - y3))*
+                 (2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3)) -
+                 2*(q1*(r1 - y1) + q4*(r2 - y2) + q3*(-r3 + y3))*
+                     ((pow(q3,2) + pow(q4,2))*(r1 - y1) +
+                         pow(q1,2)*(-r1 + y1) +
+                         pow(q2,2)*(-r1 + y1) +
+                         2*q1*(q4*(-r2 + y2) + q3*(r3 - y3)) +
+                         2*q2*(-(q3*r2) - q4*r3 + q3*y2 + q4*y3)))*alpha_x)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2),
+             ((2*(q4*(r1 - y1) + q1*(-r2 + y2) + q2*(-r3 + y3))*
+                 (2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3)) -
+                 2*(q2*(r1 - y1) + q3*(r2 - y2) + q4*(r3 - y3))*
+                     ((pow(q3,2) + pow(q4,2))*(r1 - y1) +
+                         pow(q1,2)*(-r1 + y1) +
+                         pow(q2,2)*(-r1 + y1) +
+                         2*q1*(q4*(-r2 + y2) + q3*(r3 - y3)) +
+                         2*q2*(-(q3*r2) - q4*r3 + q3*y2 + q4*y3)))*alpha_x)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2)},
+            {(2*(norm_q_squared)*(q2*
+                (q4*(-r2 + y2) + q3*(r3 - y3)) +
+                q1*(q3*(r2 - y2) + q4*(r3 - y3)))*alpha_y)/
+                pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                    2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                    2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                    pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                    pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2),
+             -(((norm_q_squared)*
+                 (2*q1*q3*(r1 - y1) + 2*q2*q4*(-r1 + y1) +
+                     pow(q1,2)*(r3 - y3) +
+                     pow(q2,2)*(r3 - y3) -
+                     (pow(q3,2) + pow(q4,2))*(r3 - y3))*alpha_y)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 +
+                     pow(q4,2)*r3 + 2*q2*q4*(r1 - y1) -
+                     2*q3*q4*y2 + 2*q1*
+                     (q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2)),
+             ((norm_q_squared)*(2*q2*q3*(-r1 + y1) +
+                 2*q1*q4*(-r1 + y1) + pow(q1,2)*(r2 - y2) +
+                 pow(q2,2)*(r2 - y2) -
+                 (pow(q3,2) + pow(q4,2))*(r2 - y2))*alpha_y)/
+                 pow(2*q3*q4*r2 - pow(q3,2)*r3 + pow(q4,2)*r3 +
+                     2*q2*q4*(r1 - y1) - 2*q3*q4*y2 +
+                     2*q1*(q3*(r1 - y1) + q2*(-r2 + y2)) +
+                     pow(q1,2)*(r3 - y3) + pow(q3,2)*y3 -
+                     pow(q4,2)*y3 + pow(q2,2)*(-r3 + y3),2),
+             ((2*(q3*(r1 - y1) + q2*(-r2 + y2) + q1*(r3 - y3))*
+                 (pow(q3,2)*r2 - pow(q4,2)*r2 + 2*q3*q4*r3 +
+                     2*q1*q4*(-r1 + y1) + pow(q1,2)*(r2 - y2) -
+                     pow(q3,2)*y2 + pow(q4,2)*y2 +
+                     pow(q2,2)*(-r2 + y2) +
+                     2*q2*(q3*(r1 - y1) + q1*(r3 - y3)) -
+                     2*q3*q4*y3) +
+                 2*(q4*(-r1 + y1) + q1*(r2 - y2) + q2*(r3 - y3))*
+                     (-2*q3*q4*r2 + pow(q3,2)*r3 -
+                         pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                         2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) +
+                         2*q3*q4*y2 + pow(q2,2)*(r3 - y3) -
+                         pow(q3,2)*y3 + pow(q4,2)*y3 +
+                         pow(q1,2)*(-r3 + y3)))*alpha_y)/
+                 pow(-2*q3*q4*r2 + pow(q3,2)*r3 -
+                     pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                     2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) + 2*q3*q4*y2 +
+                     pow(q2,2)*(r3 - y3) - pow(q3,2)*y3 +
+                     pow(q4,2)*y3 + pow(q1,2)*(-r3 + y3),2),
+             ((-2*(q4*(-r1 + y1) + q1*(r2 - y2) + q2*(r3 - y3))*
+                 (pow(q3,2)*r2 - pow(q4,2)*r2 + 2*q3*q4*r3 +
+                     2*q1*q4*(-r1 + y1) + pow(q1,2)*(r2 - y2) -
+                     pow(q3,2)*y2 + pow(q4,2)*y2 +
+                     pow(q2,2)*(-r2 + y2) +
+                     2*q2*(q3*(r1 - y1) + q1*(r3 - y3)) -
+                     2*q3*q4*y3) +
+                 2*(q3*(r1 - y1) + q2*(-r2 + y2) + q1*(r3 - y3))*
+                     (-2*q3*q4*r2 + pow(q3,2)*r3 -
+                         pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                         2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) +
+                         2*q3*q4*y2 + pow(q2,2)*(r3 - y3) -
+                         pow(q3,2)*y3 + pow(q4,2)*y3 +
+                         pow(q1,2)*(-r3 + y3)))*alpha_y)/
+                 pow(-2*q3*q4*r2 + pow(q3,2)*r3 -
+                     pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                     2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) + 2*q3*q4*y2 +
+                     pow(q2,2)*(r3 - y3) - pow(q3,2)*y3 +
+                     pow(q4,2)*y3 + pow(q1,2)*(-r3 + y3),2),
+             ((-2*(q1*(-r1 + y1) + q4*(-r2 + y2) + q3*(r3 - y3))*
+                 (pow(q3,2)*r2 - pow(q4,2)*r2 + 2*q3*q4*r3 +
+                     2*q1*q4*(-r1 + y1) + pow(q1,2)*(r2 - y2) -
+                     pow(q3,2)*y2 + pow(q4,2)*y2 +
+                     pow(q2,2)*(-r2 + y2) +
+                     2*q2*(q3*(r1 - y1) + q1*(r3 - y3)) -
+                     2*q3*q4*y3) +
+                 2*(q2*(r1 - y1) + q3*(r2 - y2) + q4*(r3 - y3))*
+                     (-2*q3*q4*r2 + pow(q3,2)*r3 -
+                         pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                         2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) +
+                         2*q3*q4*y2 + pow(q2,2)*(r3 - y3) -
+                         pow(q3,2)*y3 + pow(q4,2)*y3 +
+                         pow(q1,2)*(-r3 + y3)))*alpha_y)/
+                 pow(-2*q3*q4*r2 + pow(q3,2)*r3 -
+                     pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                     2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) + 2*q3*q4*y2 +
+                     pow(q2,2)*(r3 - y3) - pow(q3,2)*y3 +
+                     pow(q4,2)*y3 + pow(q1,2)*(-r3 + y3),2),
+             ((2*(q1*(-r1 + y1) + q4*(-r2 + y2) + q3*(r3 - y3))*
+                 (-2*q3*q4*r2 + pow(q3,2)*r3 -
+                     pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                     2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) +
+                     2*q3*q4*y2 + pow(q2,2)*(r3 - y3) -
+                     pow(q3,2)*y3 + pow(q4,2)*y3 +
+                     pow(q1,2)*(-r3 + y3)) -
+                 2*(pow(q3,2)*r2 - pow(q4,2)*r2 +
+                     2*q3*q4*r3 + 2*q1*q4*(-r1 + y1) +
+                     pow(q1,2)*(r2 - y2) - pow(q3,2)*y2 +
+                     pow(q4,2)*y2 + pow(q2,2)*(-r2 + y2) +
+                     2*q2*(q3*(r1 - y1) + q1*(r3 - y3)) -
+                     2*q3*q4*y3)*
+                     (q2*(-r1 + y1) + q3*(-r2 + y2) + q4*(-r3 + y3)))
+                 *alpha_y)/
+                 pow(-2*q3*q4*r2 + pow(q3,2)*r3 -
+                     pow(q4,2)*r3 + 2*q2*q4*(-r1 + y1) +
+                     2*q1*(q3*(-r1 + y1) + q2*(r2 - y2)) + 2*q3*q4*y2 +
+                     pow(q2,2)*(r3 - y3) - pow(q3,2)*y3 +
+                     pow(q4,2)*y3 + pow(q1,2)*(-r3 + y3),2)}};
     double dhi_over_dz_array[2][3] =
         {
             {alpha_x * (pow(q1, 2) + pow(q2, 2) + pow(q3, 2) +
@@ -594,8 +603,8 @@ Mat H_t_Jacobian_of_observations(const StateMean &s, const Mat &camIntrinsics) {
                      y3 * pow(q4, 2), -2))
             }
         };
-    Mat dhi_over_dx_cam = Mat(2, 7, CV_64F, &dhi_over_dx_cam);
-    Mat dhi_over_dz = Mat(2, 3, CV_64F, &dhi_over_dz);
+    Mat dhi_over_dx_cam = Mat(2, 7, CV_64F, &dhi_over_dx_cam_array);
+    Mat dhi_over_dz = Mat(2, 3, CV_64F, &dhi_over_dz_array);
     Mat dcam_area = result(Rect(0, 2*i_pt, 7, 2));
     dhi_over_dx_cam.copyTo(dcam_area);
     Mat dz_area = result(Rect(13 + 3 * i_pt, 2*i_pt, 3, 2));

@@ -355,39 +355,6 @@ class MY_SLAM {
     auto &known_descriptors = known_descriptors_ORB_HD;
     auto &&norm_type = NORM_HAMMING;
 
-    /*
-    Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");
-    vector<vector<DMatch> > matches;
-    matcher->knnMatch(known_descriptors, kp_descriptors, matches, 1);
-
-//    cout<<"matcher ok"<<endl;
-    drawKeypoints(cv_ptr->image, key_points, cv_ptr->image, Scalar({20, 240, 20}));
-    for (int i_known = 0; i_known < 4; ++i_known) {
-      Scalar color;
-      switch (i_known) {
-        case 0: color = Scalar(256, 0, 0);
-          break;
-        case 1: color = Scalar(0, 256, 0);
-          break;
-        case 2: color = Scalar(0, 0, 256);
-          break;
-        case 3: color = Scalar(0, 0, 0);
-          break;
-      }
-      int closest_id = matches[i_known][0].trainIdx;
-      circle(cv_ptr->image, key_points[closest_id].pt, 1, color);
-      circle(cv_ptr->image, key_points[closest_id].pt, 2, color);
-      circle(cv_ptr->image, key_points[closest_id].pt, 3, color);
-      circle(cv_ptr->image, key_points[closest_id].pt, 4, color);
-      circle(cv_ptr->image, key_points[closest_id].pt, 5, color);
-      circle(cv_ptr->image, key_points[closest_id].pt, 6, color);
-      circle(cv_ptr->image, key_points[closest_id].pt, 7, color);
-      double distance =
-          norm(known_descriptors.row(i_known), kp_descriptors.row(closest_id), NORM_HAMMING);
-      cout << kp_descriptors.row(closest_id) << distance << endl;
-    }
-     */
-
     vector<Point2d> observations;
     for (int i_known_kp = 0; i_known_kp < 4; ++i_known_kp) {
       double min_distance =
@@ -396,7 +363,6 @@ class MY_SLAM {
       for (int i_kp = 0; i_kp < key_points.size(); ++i_kp) {
         double distance =
             norm(known_descriptors.row(i_known_kp), kp_descriptors.row(i_kp), norm_type);
-//        cout << distance << " ";
         if (distance < min_distance) {
           min_distance = distance;
           closest_id = i_kp;
@@ -421,13 +387,7 @@ class MY_SLAM {
       circle(cv_ptr->image, key_points[closest_id].pt, 5, color);
       circle(cv_ptr->image, key_points[closest_id].pt, 6, color);
       circle(cv_ptr->image, key_points[closest_id].pt, 7, color);
-//      cout << kp_descriptors.row(closest_id) << min_distance << endl;
     }
-//    double sum = cv::sum( kp_descriptors )[0];
-//    cout << mhash<char>(kp_descriptors) << endl << mhash<char>(known_descriptors) << endl;
-    // Update GUI Window
-//    cout << endl;
-//    cout<<kp_descriptors<<endl;
 
     vector<Point2d> predicted_points = predict_points(x_state_mean, camera_intrinsic);
     for (int i = 0; i < predicted_points.size(); i++) {
@@ -445,9 +405,16 @@ class MY_SLAM {
            Scalar(0, 255, 0),
            2);
     }
+    cout<<"state:"<<state2mat(x_state_mean)<<endl;
 
     //update step
     Mat H_t = H_t_Jacobian_of_observations(x_state_mean, camera_intrinsic);
+    for(int ir = 0; ir < H_t.rows; ++ir){
+      for(int ic = 0; ic < H_t.cols; ++ic){
+        cout<<H_t.at<double>(ir,ic)<<" ";
+      }
+      cout<<endl;
+    }
     double delta_time = 1; //todo: estimate properly
     Mat KalmanGain = Kalman_Gain(Sigma_state_cov,
                                  H_t,
@@ -467,7 +434,7 @@ class MY_SLAM {
         Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
         * predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
     cv::imshow(OPENCV_WINDOW, cv_ptr->image);
-    cv::waitKey(1);
+    cv::waitKey();
   }
 };
 
