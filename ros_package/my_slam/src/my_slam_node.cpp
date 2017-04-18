@@ -431,7 +431,7 @@ class MY_SLAM {
 
     vector<Point2d> predicted_points = predict_points(x_state_mean, camera_intrinsic);
     for (int i = 0; i < predicted_points.size(); i++) {
-      cout<<predicted_points[i].x<<" "<<predicted_points[i].y<<endl;
+      cout << predicted_points[i].x << " " << predicted_points[i].y << endl;
       Point2d c1 = Point2d(5, 5);
       Point2d c2 = Point2d(5, -5);
       line(cv_ptr->image,
@@ -451,7 +451,7 @@ class MY_SLAM {
     double delta_time = 1; //todo: estimate properly
     Mat KalmanGain = Kalman_Gain(Sigma_state_cov,
                                  H_t,
-                                 2.5,x_state_mean,delta_time, Pn_noise_cov);
+                                 2.5, x_state_mean, delta_time, Pn_noise_cov);
     Mat observations_diff = Mat(x_state_mean.feature_positions_w.size() * 2, 1, CV_64F, double(0));
     for (int i_obs = 0; i_obs < x_state_mean.feature_positions_w.size(); ++i_obs) {
       observations_diff.at<double>(i_obs * 2, 0) =
@@ -463,7 +463,9 @@ class MY_SLAM {
     Mat statemat = state2mat(x_state_mean);
     x_state_mean = StateMean(statemat + k_times_o);
     //Todo: calculate sigma
-
+    Sigma_state_cov = (
+        Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
+        * predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
     cv::imshow(OPENCV_WINDOW, cv_ptr->image);
     cv::waitKey(1);
   }
