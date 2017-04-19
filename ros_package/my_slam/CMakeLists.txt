@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 set(CMAKE_CXX_STANDARD 11)
 
+set(SOURCE_FILES src/my_slam_node.cpp src/jacobians.cpp src/my_types.cpp src/my_util.cpp src/jacobians.h src/my_types.h src/my_util.h)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -134,7 +135,7 @@ include_directories(
 # add_dependencies(my_slam ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(my_slam_node src/my_slam_node.cpp)
+add_executable(my_slam_node ${SOURCE_FILES})
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
