@@ -8,7 +8,7 @@
 using namespace std;
 using namespace cv;
 
-Quaternion operator+(Quaternion a, Quaternion b) {
+Quaternion operator+(const Quaternion &a, const Quaternion &b) {
   Quaternion res;
   for (int i = 0; i < 4; i++) {
     res[i] = a[i] + b[i];
@@ -17,13 +17,23 @@ Quaternion operator+(Quaternion a, Quaternion b) {
 }
 
 //source: http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/code/
-Quaternion operator*(Quaternion q1, Quaternion q2) {
+Quaternion operator*(const Quaternion &q1, const Quaternion &q2) {
   Quaternion res;
   res[1] = q1[1] * q2[0] + q1[2] * q2[3] - q1[3] * q2[2] + q1[0] * q2[1];
   res[2] = -q1[1] * q2[3] + q1[2] * q2[0] + q1[3] * q2[1] + q1[0] * q2[2];
   res[3] = q1[1] * q2[2] - q1[2] * q2[1] + q1[3] * q2[0] + q1[0] * q2[3];
   res[0] = -q1[1] * q2[1] - q1[2] * q2[2] - q1[3] * q2[3] + q1[0] * q2[0];
   return res;
+}
+
+Quaternion operator*(const Quaternion &q, double val){
+  return Quaternion(q.w() * val, q.i() * val, q.j() * val, q.k() * val);
+}
+Quaternion operator*(double val, const Quaternion &q){
+  return q * val;
+}
+Quaternion operator/(const Quaternion &q, double val){
+  return q * (1.0/val);
 }
 
 Mat state2mat(StateMean s){
@@ -86,4 +96,8 @@ ostream &operator<<(ostream &os, const StateMean &stateMean) {
      << "angular_velocity_r:\t"  << stateMean.angular_velocity_r <<endl
      << "feature_positions_w:\n" << stateMean.feature_positions_w;
   return os;
+}
+
+double Norm(const Quaternion &q){
+  return sqrt(q.w() * q.w() + q.i() * q.i() + q.j() * q.j() + q.k() * q.k());
 }

@@ -7,6 +7,9 @@
 
 #include <stdint.h>
 #include "opencv2/opencv.hpp"
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
 
 using namespace cv;
 using namespace std;
@@ -21,4 +24,14 @@ void display_mat(Mat m, string name = "");
 
 void DrawCross(Mat output_mat, Point2d pt, Scalar color = Scalar(0, 255, 0), int size = 5);
 
+void DrawPoints(Mat &output_image,
+                const vector<Point2d> &points_coords,
+                char marker_type = 'o');
+
+Mat ImageFromMsg(const sensor_msgs::ImageConstPtr &msg);
+
+vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
+                                             const Mat &kp_descriptors,
+                                             const Mat &known_descriptors,
+                                             const NormTypes &norm_type = NORM_HAMMING);
 #endif //MY_SLAM_MY_UTIL_H

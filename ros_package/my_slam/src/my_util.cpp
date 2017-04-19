@@ -7,6 +7,9 @@
 #include <stdint.h>
 #include "opencv2/opencv.hpp"
 #include "opencv2/imgproc.hpp"
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
 
 using namespace cv;
 using namespace std;
@@ -59,4 +62,53 @@ void DrawCross(Mat output_mat, Point2d pt, Scalar color, int size){
   line(output_mat, pt - s2, pt + s2, color, 2);
   line(output_mat, pt - s1, pt + s1, Scalar(255,255,255), 1);
   line(output_mat, pt - s2, pt + s2, Scalar(255,255,255), 1);
+}
+
+
+void DrawPoints(Mat &output_image,
+                const vector<Point2d> &points_coords,
+                char marker_type) {
+  for (int i_obs = 0; i_obs < points_coords.size(); ++i_obs) {
+    Scalar color = hashcolor(i_obs);
+    if (marker_type == 'o') {
+      circle(output_image, points_coords[i_obs], 4, color, 7);
+    }
+    if (marker_type == 'x') {
+      DrawCross(output_image, points_coords[i_obs], color);
+    }
+  }
+}
+
+Mat ImageFromMsg(const sensor_msgs::ImageConstPtr &msg){
+  cv_bridge::CvImagePtr cv_ptr;
+  try {
+    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+  }
+  catch (cv_bridge::Exception &e) {
+    ROS_ERROR("cv_bridge exception: %s", e.what());
+    exit(1);
+  }
+  return cv_ptr->image;
+}
+
+vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
+                                             const Mat &kp_descriptors,
+                                             const Mat &known_descriptors,
+                                             const NormTypes &norm_type) {
+  vector<Point2d> coordinates_vec;
+  for (int i_known_kp = 0; i_known_kp < 4; ++i_known_kp) {
+    double min_distance =
+        norm(known_descriptors.row(i_known_kp), kp_descriptors.row(0), norm_type);
+    int closest_id = 0;
+    for (int i_kp = 0; i_kp < key_points.size(); ++i_kp) {
+      double distance =
+          norm(known_descriptors.row(i_known_kp), kp_descriptors.row(i_kp), norm_type);
+      if (distance < min_distance) {
+        min_distance = distance;
+        closest_id = i_kp;
+      }
+    }
+    coordinates_vec.push_back(key_points[closest_id].pt);
+  }
+  return coordinates_vec;
 }

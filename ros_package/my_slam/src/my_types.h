@@ -58,7 +58,7 @@ class Quaternion {
     k() = unit_vec.z * sin(theta / 2);
   }
 
-  Quaternion(int w, int i, int j, int k) {
+  Quaternion(double w, double i, double j, double k) {
     data[0] = w;
     data[1] = i;
     data[2] = j;
@@ -68,14 +68,26 @@ class Quaternion {
   double &operator[](int k) {
     return data[k];
   }
+
+  double operator[](int k) const {
+    return data[k];
+  }
+
   friend ostream &operator<<(ostream &os, const Quaternion &quaternion) {
-    os << quaternion.w()<<" + " <<quaternion.i()<<"i + " <<quaternion.j()<<"j + " <<quaternion.k()<<"k";
+    os << quaternion.w() << " + " << quaternion.i() << "i + " << quaternion.j() << "j + "
+       << quaternion.k() << "k";
     return os;
   }
 };
 
-Quaternion operator+(Quaternion a, Quaternion b);
-Quaternion operator*(Quaternion q1, Quaternion q2);
+Quaternion operator+(const Quaternion &a, const Quaternion &b);
+Quaternion operator*(const Quaternion &q1, const Quaternion &q2);
+
+Quaternion operator*(const Quaternion &q1, double val);
+Quaternion operator*(double val, const Quaternion &q);
+Quaternion operator/(const Quaternion &q, double val);
+
+double Norm(const Quaternion &q);
 
 struct StateMean {
   // w = world

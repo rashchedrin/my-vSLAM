@@ -245,69 +245,42 @@ class MY_SLAM {
   }
 
   void subscription_callback(const sensor_msgs::ImageConstPtr &msg_in) {
-    EKF_iteration(msg_in);
-  }
-
-  vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
-                                               const Mat &kp_descriptors,
-                                               const Mat &known_descriptors,
-                                               const NormTypes &norm_type = NORM_HAMMING) const {
-    vector<Point2d> coordinates_vec;
-    for (int i_known_kp = 0; i_known_kp < 4; ++i_known_kp) {
-      double min_distance =
-          norm(known_descriptors.row(i_known_kp), kp_descriptors.row(0), norm_type);
-      int closest_id = 0;
-      for (int i_kp = 0; i_kp < key_points.size(); ++i_kp) {
-        double distance =
-            norm(known_descriptors.row(i_known_kp), kp_descriptors.row(i_kp), norm_type);
-        if (distance < min_distance) {
-          min_distance = distance;
-          closest_id = i_kp;
-        }
-      }
-      coordinates_vec.push_back(key_points[closest_id].pt);
-    }
-    return coordinates_vec;
-  }
-  void DrawPoints(Mat &output_image,
-                  const vector<Point2d> &points_coords,
-                  char marker_type = 'o') const {
-    for (int i_obs = 0; i_obs < points_coords.size(); ++i_obs) {
-      Scalar color = hashcolor(i_obs);
-      if (marker_type == 'o') {
-        circle(output_image, points_coords[i_obs], 4, color, 7);
-      }
-      if (marker_type == 'x') {
-        DrawCross(output_image, points_coords[i_obs], color);
-      }
-    }
-  }
-
-  void EKF_iteration(const sensor_msgs::ImageConstPtr &msg) {
     static int frame_number = 0;
-    int msg_number = std::stoi(msg->header.frame_id);
+    int msg_number = std::stoi(msg_in->header.frame_id);
     frame_number++;
     if (frame_number != msg_number) {
       cout << "FRAMES MISSED" << endl;
       frame_number = msg_number;
     }
 
-    cv_bridge::CvImagePtr cv_ptr;
-    try {
-      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-    }
-    catch (cv_bridge::Exception &e) {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-      return;
+    Mat image_in = ImageFromMsg(msg_in);
+    cv::imshow("raw", image_in);
+
+    EKF_iteration(image_in);
+
+    if (isnan(x_state_mean.position_w.x) ||
+        isnan(x_state_mean.position_w.y) ||
+        isnan(x_state_mean.position_w.z)) {
+      cout << "Lost location" << endl;
+      exit(0);
     }
 
-    Mat &original = cv_ptr->image;
-    Mat output_mat = original.clone();
-    cv::imshow("raw", original);
+    if(abs(Norm(x_state_mean.direction_w) - 1) > 0.5){
+      cout << "Lost direction" << endl;
+      cout<<x_state_mean.direction_w<<endl;
+      cout<<Norm(x_state_mean.direction_w)<<endl;
+      exit(0);
+    }
+
+    cv::waitKey(1);
+  }
+
+  void EKF_iteration(Mat input_image) {
+    Mat output_mat = input_image.clone();
 
     std::vector<KeyPoint> key_points;
     Mat kp_descriptors;
-    ORB_detector->detectAndCompute(original, noArray(), key_points, kp_descriptors);
+    ORB_detector->detectAndCompute(input_image, noArray(), key_points, kp_descriptors);
 
     auto &known_descriptors = known_descriptors_ORB_HD;
 
@@ -336,10 +309,11 @@ class MY_SLAM {
       observations_diff.at<double>(i_obs * 2 + 1, 0) =
           observations[i_obs].y - predicted_points[i_obs].y;
     }
-    Mat k_times_o = KalmanGain * observations_diff;
     Mat stateMat = state2mat(x_state_mean);
-    StateMean x_state_mean_new = StateMean(stateMat + k_times_o);
+    StateMean x_state_mean_new = StateMean(stateMat + KalmanGain * observations_diff);
 
+    // this vv is mathematically incorrect, since EKF doesn't know about this line
+    x_state_mean_new.direction_w = x_state_mean_new.direction_w/Norm(x_state_mean_new.direction_w);
     Mat Sigma_state_cov_new = (
         Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
         * predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
@@ -347,16 +321,8 @@ class MY_SLAM {
     x_state_mean = x_state_mean_new;
     Sigma_state_cov = Sigma_state_cov_new;
 
-    if (isnan(x_state_mean.position_w.x) ||
-        isnan(x_state_mean.position_w.y) ||
-        isnan(x_state_mean.position_w.z)) {
-      cout << "Lost location" << endl;
-      exit(0);
-    }
     cout << endl;
-
     cv::imshow(OPENCV_WINDOW, output_mat);
-    cv::waitKey(1);
   }
 };
 
