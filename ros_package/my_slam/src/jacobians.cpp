@@ -24,112 +24,91 @@ Mat Q_df_over_dn(const StateMean &state, double dt) {
   double norm_w = pow(pow(w1, 2) + pow(w2, 2) + pow(w3, 2), 0.5);
   double norm_w_squared = pow(w1, 2) + pow(w2, 2) + pow(w3, 2);
 
-  double result_array[13][6] = {
-      {dt, 0, 0, 0, 0, 0},
-      {0, dt, 0, 0, 0, 0},
-      {0, dt, 0, 0, 0, 0},
-      {0, 0, 0, (dt * (-(q3 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1)) -
-          q4 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-          q2 * cos(norm_w / 2.) * pow(w1, 2) * pow(norm_w_squared, -1) +
-          2 * q3 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-          2 * q4 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-          2 * q2 * pow(w1, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-          2 * q2 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-          q1 * w1 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (-(q2 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1)) -
-           q4 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-           q3 * cos(norm_w / 2.) * pow(w2, 2) * pow(norm_w_squared, -1) +
-           2 * q2 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q4 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q3 * pow(w2, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q3 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q1 * w2 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (-(q2 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1)) -
-           q3 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-           q4 * cos(norm_w / 2.) * pow(w3, 2) * pow(norm_w_squared, -1) +
-           2 * q2 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q3 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q4 * pow(w3, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q4 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q1 * w3 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.},
-      {0, 0, 0, (dt * (-(q4 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1)) +
-          q3 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-          q1 * cos(norm_w / 2.) * pow(w1, 2) * pow(norm_w_squared, -1) +
-          2 * q4 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-          2 * q3 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-          2 * q1 * pow(w1, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-          2 * q1 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-          q2 * w1 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (q1 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-           q3 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-           q4 * cos(norm_w / 2.) * pow(w2, 2) * pow(norm_w_squared, -1) -
-           2 * q1 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q3 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q4 * pow(w2, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q4 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q2 * w2 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (q1 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-           q4 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-           q3 * cos(norm_w / 2.) * pow(w3, 2) * pow(norm_w_squared, -1) -
-           2 * q1 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q4 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q3 * pow(w3, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q3 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q2 * w3 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.},
-      {0, 0, 0, (dt * (q1 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-          q2 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-          q4 * cos(norm_w / 2.) * pow(w1, 2) * pow(norm_w_squared, -1) -
-          2 * q1 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-          2 * q2 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-          2 * q4 * pow(w1, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-          2 * q4 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-          q3 * w1 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (q4 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-           q2 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-           q1 * cos(norm_w / 2.) * pow(w2, 2) * pow(norm_w_squared, -1) -
-           2 * q4 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q2 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q1 * pow(w2, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q1 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q3 * w2 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (q4 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-           q1 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-           q2 * cos(norm_w / 2.) * pow(w3, 2) * pow(norm_w_squared, -1) -
-           2 * q4 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q1 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q2 * pow(w3, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q2 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q3 * w3 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.},
-      {0, 0, 0, (dt * (q2 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-          q1 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) -
-          q3 * cos(norm_w / 2.) * pow(w1, 2) * pow(norm_w_squared, -1) -
-          2 * q2 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-          2 * q1 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-          2 * q3 * pow(w1, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-          2 * q3 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-          q4 * w1 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (-(q3 * w1 * w2 * cos(norm_w / 2.) * pow(norm_w_squared, -1)) +
-           q1 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-           q2 * cos(norm_w / 2.) * pow(w2, 2) * pow(norm_w_squared, -1) +
-           2 * q3 * w1 * w2 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q1 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q2 * pow(w2, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q2 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q4 * w2 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.,
-       (dt * (-(q3 * w1 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1)) +
-           q2 * w2 * w3 * cos(norm_w / 2.) * pow(norm_w_squared, -1) +
-           q1 * cos(norm_w / 2.) * pow(w3, 2) * pow(norm_w_squared, -1) +
-           2 * q3 * w1 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q2 * w2 * w3 * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) -
-           2 * q1 * pow(w3, 2) * pow(norm_w_squared, -1.5) * sin(norm_w / 2.) +
-           2 * q1 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.) -
-           q4 * w3 * pow(norm_w_squared, -0.5) * sin(norm_w / 2.))) / 2.},
-      {1, 0, 0, 0, 0, 0},
-      {0, 1, 0, 0, 0, 0},
-      {0, 0, 1, 0, 0, 0},
-      {0, 0, 0, 1, 0, 0},
-      {0, 0, 0, 0, 1, 0},
-      {0, 0, 0, 0, 0, 1}};
+  double result_array[13][6] =
+      {
+          {dt,0,0,0,0,0},
+          {0,dt,0,0,0,0},
+          {0,0,dt,0,0,0},
+          {0,0,0,-(dt*(w1*(q2*w1 + q3*w2 + q4*w3)*
+              sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+              cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) +
+              (q1*w1*(pow(w1,2) + pow(w2,2) + pow(w3,2)) +
+                  2*(-(q3*w1*w2) - q4*w1*w3 + q2*(pow(w2,2) + pow(w3,2))))*
+                  sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+              (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           -(dt*(w2*(q2*w1 + q3*w2 + q4*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) +
+               (2*q3*(pow(w1,2) + pow(w3,2)) +
+                   w2*(-2*q2*w1 - 2*q4*w3 + q1*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           -(dt*(w3*(q2*w1 + q3*w2 + q4*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) +
+               (2*q4*(pow(w1,2) + pow(w2,2)) +
+                   w3*(-2*q2*w1 - 2*q3*w2 + q1*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5))},
+          {0,0,0,(dt*(w1*(q1*w1 - q4*w2 + q3*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+              cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) -
+              (q2*w1*(pow(w1,2) + pow(w2,2) + pow(w3,2)) -
+                  2*(q4*w1*w2 - q3*w1*w3 + q1*(pow(w2,2) + pow(w3,2))))*
+                  sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+              (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           (dt*(w2*(q1*w1 - q4*w2 + q3*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) -
+               (2*q4*(pow(w1,2) + pow(w3,2)) +
+                   w2*(2*q1*w1 + 2*q3*w3 + q2*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           (dt*(w3*(q1*w1 - q4*w2 + q3*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) +
+               (2*q3*(pow(w1,2) + pow(w2,2)) -
+                   w3*(2*q1*w1 - 2*q4*w2 + q2*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5))},
+          {0,0,0,(dt*(w1*(q4*w1 + q1*w2 - q2*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+              cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) -
+              (2*q1*w1*w2 + q3*w1*(pow(w1,2) + pow(w2,2) + pow(w3,2)) -
+                  2*(q2*w1*w3 + q4*(pow(w2,2) + pow(w3,2))))*
+                  sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+              (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           (dt*(w2*(q4*w1 + q1*w2 - q2*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) +
+               (2*q1*(pow(w1,2) + pow(w3,2)) -
+                   w2*(2*q4*w1 - 2*q2*w3 + q3*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           (dt*(w3*(q4*w1 + q1*w2 - q2*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) -
+               (2*q2*(pow(w1,2) + pow(w2,2)) +
+                   w3*(2*q4*w1 + 2*q1*w2 + q3*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5))},
+          {0,0,0,-(dt*(w1*(q3*w1 - q2*w2 - q1*w3)*
+              sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+              cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.) +
+              (q4*w1*(pow(w1,2) + pow(w2,2) + pow(w3,2)) +
+                  2*(q2*w1*w2 + q1*w1*w3 + q3*(pow(w2,2) + pow(w3,2))))*
+                  sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+              (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           -(dt*(-(w2*(-(q3*w1) + q2*w2 + q1*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)) +
+               (-2*q2*(pow(w1,2) + pow(w3,2)) +
+                   w2*(-2*q3*w1 + 2*q1*w3 + q4*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5)),
+           -(dt*(-(w3*(-(q3*w1) + q2*w2 + q1*w3)*sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))*
+               cos(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)) +
+               (-2*q1*(pow(w1,2) + pow(w2,2)) +
+                   w3*(-2*q3*w1 + 2*q2*w2 + q4*(pow(w1,2) + pow(w2,2) + pow(w3,2))))*
+                   sin(sqrt(pow(w1,2) + pow(w2,2) + pow(w3,2))/2.)))/
+               (2.*pow(pow(w1,2) + pow(w2,2) + pow(w3,2),1.5))},
+          {1,0,0,0,0,0},
+          {0,1,0,0,0,0},
+          {0,0,1,0,0,0},
+          {0,0,0,1,0,0},
+          {0,0,0,0,1,0},
+          {0,0,0,0,0,1}};
   //todo: think about removing .clone()
   Mat result = Mat(13, 6, CV_64F, &result_array).clone();
   return result;

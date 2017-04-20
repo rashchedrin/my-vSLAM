@@ -3,6 +3,7 @@
 //
 
 #include "my_types.h"
+#include "my_util.h"
 #include "opencv2/opencv.hpp"
 
 using namespace std;
@@ -91,9 +92,9 @@ StateMean::StateMean(Mat m) {
 }
 ostream &operator<<(ostream &os, const StateMean &stateMean) {
   os << "position_w:\t" << stateMean.position_w <<endl
-     << "direction_w:\t" << stateMean.direction_w <<endl
+     << "direction_w:\t" << stateMean.direction_w <<" phi = "<<limitPi(acos(stateMean.direction_w.w())*2)<<endl
      << "velocity_w:\t" << stateMean.velocity_w <<endl
-     << "angular_velocity_r:\t"  << stateMean.angular_velocity_r <<endl
+     << "angular_velocity_r:\t"  << stateMean.angular_velocity_r<<" phi = "<<limitPi(norm(stateMean.angular_velocity_r) )<<endl
      << "feature_positions_w:\n" << stateMean.feature_positions_w;
   return os;
 }

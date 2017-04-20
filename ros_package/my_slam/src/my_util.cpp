@@ -112,3 +112,18 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
   }
   return coordinates_vec;
 }
+
+double mod(double a, double b){
+  while(a > b){
+    a -= b;
+  }
+  return a;
+}
+
+double limitPi(double a){
+  a = mod(a, pi * 2);
+  if(a > pi){
+    a -= 2*pi;
+  }
+  return a;
+}

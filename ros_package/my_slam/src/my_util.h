@@ -14,6 +14,8 @@
 using namespace cv;
 using namespace std;
 
+const long double pi = 3.141592653589793238462643383279502884L /* pi */;
+
 uint32_t uinthash(uint32_t x);
 
 int32_t inthash(int32_t val, int32_t salt = 98262, int32_t low = 0, int32_t high = 256);
@@ -35,5 +37,5 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const Mat &known_descriptors,
                                              const NormTypes &norm_type = NORM_HAMMING);
 
-
+double limitPi(double a);
 #endif //MY_SLAM_MY_UTIL_H

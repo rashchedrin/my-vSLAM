@@ -19,9 +19,6 @@
 using namespace cv;
 using namespace std;
 
-const long double pi = 3.141592653589793238462643383279502884L /* pi */;
-//Todo: write Pi properly
-
 static const std::string OPENCV_WINDOW = "Image window 1";
 
 template<typename MAT_TYPE>
@@ -178,7 +175,7 @@ class MY_SLAM {
   double camera_intrinsic_array2[3][3] = {{-1.0166722592048205e+03, 0., 612.105},
                                           {0., -1.0166722592048205e+03, 375.785},
                                           {0., 0., 1.}};
-  const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array2);
+  const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array);
 
   Ptr<ORB> ORB_detector;
  public:
@@ -188,10 +185,16 @@ class MY_SLAM {
     // Subscrive to input video feed and publish output video feed
     image_sub_ = it_.subscribe("image_raw", 1,
                                &MY_SLAM::subscription_callback, this);
-    Sigma_state_cov = Mat::eye(25, 25, CV_64F); //may be zeros?
-    Pn_noise_cov = Mat::eye(6, 6, CV_64F); //todo: init properly
+    Sigma_state_cov = 1*Mat::eye(25, 25, CV_64F); //may be zeros?
+    double position_speed_noise  = 1;
+    double angular_speed_noise = 1;
+    Pn_noise_cov = position_speed_noise*Mat::eye(6, 6, CV_64F); //todo: init properly
+    Pn_noise_cov.at<double>(3,3) = angular_speed_noise;
+    Pn_noise_cov.at<double>(4,4) = angular_speed_noise;
+    Pn_noise_cov.at<double>(5,5) = angular_speed_noise;
+    //Todo: fix no-rotation == 2Pi. Really it only works if delta_time = 1
     x_state_mean.angular_velocity_r =
-        Point3d(2 * pi, 0, 0); // no rotation, 2*pi needed to eliminate indeterminance
+        Point3d(2 * pi, 0, 0);// no rotation, 2*pi needed to eliminate indeterminance
     x_state_mean.direction_w = Quaternion(1, 0, 0, 0); // Zero rotation
     x_state_mean.position_w = Point3d(0, 0, 0);
     x_state_mean.velocity_w = Point3d(0, 0, 0);
@@ -212,10 +215,10 @@ class MY_SLAM {
      *
      * In local coordinates, camera looks from 0 to Z axis. Like here.
      */
-    x_state_mean.feature_positions_w.push_back(Point3d(-40, -4, 128.3)); //cm
-    x_state_mean.feature_positions_w.push_back(Point3d(-40, -41, 128.3));
-    x_state_mean.feature_positions_w.push_back(Point3d(40, -41, 128.3));
-    x_state_mean.feature_positions_w.push_back(Point3d(40, -4, 128.3));
+    x_state_mean.feature_positions_w.push_back(Point3d(-40, -4, 125.3)); //cm
+    x_state_mean.feature_positions_w.push_back(Point3d(-40, -41, 125.3));
+    x_state_mean.feature_positions_w.push_back(Point3d(40, -41, 125.3));
+    x_state_mean.feature_positions_w.push_back(Point3d(40, -4, 125.3));
 
     int nfeatures = 1000;
     float scaleFactor = 1.2f;
@@ -286,7 +289,7 @@ class MY_SLAM {
   void EKF_iteration(Mat input_image) {
     cout << "state:" << endl << x_state_mean << endl;
     Mat output_mat = input_image.clone();
-    double delta_time = 1; //todo: estimate properly
+    double delta_time = 1; //todo: estimate properly. Warning! if delta_time is not 1, then angular_speed ==2pi will not be a 0 rotation
 //Predict
     StateMean x_state_mean_pred =
         predict_state(x_state_mean, Point3d(0, 0, 0), Point3d(0, 0, 0), delta_time);
@@ -295,7 +298,7 @@ class MY_SLAM {
     //yes, x_s_m
     Mat Sigma_state_cov_pred =
         predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
-
+    display_mat(Sigma_state_cov_pred,"Sigma_state_cov_pred");
 //Measure
     //Todo: make like in MonoSLAM, instead of ORB
     std::vector<KeyPoint> key_points;
@@ -311,11 +314,9 @@ class MY_SLAM {
     DrawPoints(output_mat, predicted_points, 'x');
 
 //Update
-    //Todo: change x_state_mean to x_state_mean_pred where necessary
     //yes, x_pred
     Mat H_t = H_t_Jacobian_of_observations(x_state_mean_pred, camera_intrinsic);
     display_mat(H_t, "H_t");
-    //Todo: find is it actually x_state_mean or x_state_mean_pred here v
     Mat KalmanGain =
         Kalman_Gain(H_t, 2.5, x_state_mean_pred, Pn_noise_cov, Sigma_state_cov_pred);
     display_mat(KalmanGain, "KG");
@@ -335,7 +336,6 @@ class MY_SLAM {
     x_state_mean_new.direction_w =
         x_state_mean_new.direction_w / norm(x_state_mean_new.direction_w);
 
-    //Todo: find is it actually x_state_mean or x_state_mean_pred here
     Mat Sigma_state_cov_new = (
         Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
         * Sigma_state_cov_pred;
