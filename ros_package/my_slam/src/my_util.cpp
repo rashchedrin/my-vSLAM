@@ -44,13 +44,32 @@ Scalar hashcolor(int32_t val, int32_t salt) {
                  inthash(val, inthash(salt + 3))});
 }
 
-void display_mat(Mat m, string name) {
+void display_mat(Mat m, string name, bool cformat) {
   cout << name << " " << m.rows << " x " << m.cols << endl;
+  if(cformat){
+    cout<<"{"<<endl;
+  }
   for (int ir = 0; ir < m.rows; ++ir) {
+    if(cformat){
+      cout<<"{ ";
+    }
     for (int ic = 0; ic < m.cols; ++ic) {
-      cout << m.at<double>(ir, ic) << " ";
+      cout << m.at<double>(ir, ic);
+      if(cformat && ic != m.cols - 1){
+        cout<<",";
+      }
+      cout<< " ";
+    }
+    if(cformat){
+      cout<<"}";
+      if(ir != m.rows - 1){
+        cout<<",";
+      }
     }
     cout << endl;
+  }
+  if(cformat){
+    cout<<"}"<<endl;
   }
 }
 

@@ -22,7 +22,7 @@ int32_t inthash(int32_t val, int32_t salt = 98262, int32_t low = 0, int32_t high
 
 Scalar hashcolor(int32_t val, int32_t salt = 0);
 
-void display_mat(Mat m, string name = "");
+void display_mat(Mat m, string name = "", bool cformat = false);
 
 void DrawCross(Mat output_mat, Point2d pt, Scalar color = Scalar(0, 255, 0), int size = 5);
 
