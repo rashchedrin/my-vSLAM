@@ -34,4 +34,6 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const Mat &kp_descriptors,
                                              const Mat &known_descriptors,
                                              const NormTypes &norm_type = NORM_HAMMING);
+
+
 #endif //MY_SLAM_MY_UTIL_H

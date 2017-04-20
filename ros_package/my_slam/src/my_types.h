@@ -49,7 +49,7 @@ class Quaternion {
   Quaternion() {}
 
   //Get Quaternion from angles
-  Quaternion(Point3d axis_angle) {
+  explicit Quaternion(Point3d axis_angle) {
     double theta = norm(axis_angle);
     Point3d unit_vec = axis_angle / theta;
     w() = cos(theta / 2);
@@ -87,7 +87,7 @@ Quaternion operator*(const Quaternion &q1, double val);
 Quaternion operator*(double val, const Quaternion &q);
 Quaternion operator/(const Quaternion &q, double val);
 
-double Norm(const Quaternion &q);
+double norm(const Quaternion &q);
 
 struct StateMean {
   // w = world
@@ -100,7 +100,7 @@ struct StateMean {
   //total = 13+3*n
   // /.n->4 => total = 25
   StateMean() {}
-  StateMean(Mat m);
+  explicit StateMean(Mat m);
   friend ostream &operator<<(ostream &os, const StateMean &stateMean);
 };
 

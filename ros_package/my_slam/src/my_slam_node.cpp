@@ -19,7 +19,7 @@
 using namespace cv;
 using namespace std;
 
-const double pi = 3.13159265358979323;
+const long double pi = 3.141592653589793238462643383279502884L /* pi */;
 //Todo: write Pi properly
 
 static const std::string OPENCV_WINDOW = "Image window 1";
@@ -265,21 +265,38 @@ class MY_SLAM {
       exit(0);
     }
 
-    if(abs(Norm(x_state_mean.direction_w) - 1) > 0.5){
+    if (abs(norm(x_state_mean.direction_w) - 1) > 0.5) {
       cout << "Lost direction" << endl;
-      cout<<x_state_mean.direction_w<<endl;
-      cout<<Norm(x_state_mean.direction_w)<<endl;
+      cout << x_state_mean.direction_w << endl;
+      cout << norm(x_state_mean.direction_w) << endl;
       exit(0);
     }
 
-    cv::waitKey(1);
+    if (norm(x_state_mean.position_w) > 1000) {
+      cout << "Position is too far" << endl;
+      cout << x_state_mean.position_w << endl;
+      cout << norm(x_state_mean.position_w) << endl;
+      exit(0);
+    }
+
+    if (cv::waitKey(1) == 27) {
+      exit(0);
+    }
   }
 
   void EKF_iteration(Mat input_image) {
+    cout << "state:" << endl << x_state_mean << endl;
     Mat output_mat = input_image.clone();
+    double delta_time = 1; //todo: estimate properly
+//Predict
+    StateMean x_state_mean_pred =
+        predict_state(x_state_mean, Point3d(0, 0, 0), Point3d(0, 0, 0), delta_time);
+    cout << "st_pred:" << endl << x_state_mean_pred << endl;
+    vector<Point2d> predicted_points = predict_points(x_state_mean_pred, camera_intrinsic);
 
     std::vector<KeyPoint> key_points;
     Mat kp_descriptors;
+//Measure
     ORB_detector->detectAndCompute(input_image, noArray(), key_points, kp_descriptors);
 
     auto &known_descriptors = known_descriptors_ORB_HD;
@@ -288,35 +305,35 @@ class MY_SLAM {
                                                                 kp_descriptors,
                                                                 known_descriptors);
     DrawPoints(output_mat, observations);
-
-    vector<Point2d> predicted_points = predict_points(x_state_mean, camera_intrinsic);
     DrawPoints(output_mat, predicted_points, 'x');
 
-    cout << "state:" << endl << x_state_mean << endl;
-    //update step
-    Mat H_t = H_t_Jacobian_of_observations(x_state_mean, camera_intrinsic);
+//Update
+    //Todo: change x_state_mean to predicted_state where necessary
+    //Todo: find is it actually x_state_mean or x_state_mean_pred here
+    Mat H_t = H_t_Jacobian_of_observations(x_state_mean_pred, camera_intrinsic);
     display_mat(H_t, "H_t");
-
-    double delta_time = 1; //todo: estimate properly
-
-    Mat KalmanGain = Kalman_Gain(Sigma_state_cov, H_t, 2.5, x_state_mean, delta_time, Pn_noise_cov);
+    //Todo: find is it actually x_state_mean or x_state_mean_pred here v
+    Mat KalmanGain = Kalman_Gain(Sigma_state_cov, H_t, 2.5, x_state_mean_pred, delta_time, Pn_noise_cov);
     display_mat(KalmanGain, "KG");
 
-    Mat observations_diff = Mat(x_state_mean.feature_positions_w.size() * 2, 1, CV_64F, double(0));
-    for (int i_obs = 0; i_obs < x_state_mean.feature_positions_w.size(); ++i_obs) {
+    Mat observations_diff = Mat(x_state_mean_pred.feature_positions_w.size() * 2, 1, CV_64F, double(0));
+    for (int i_obs = 0; i_obs < x_state_mean_pred.feature_positions_w.size(); ++i_obs) {
       observations_diff.at<double>(i_obs * 2, 0) =
           observations[i_obs].x - predicted_points[i_obs].x;
       observations_diff.at<double>(i_obs * 2 + 1, 0) =
           observations[i_obs].y - predicted_points[i_obs].y;
     }
-    Mat stateMat = state2mat(x_state_mean);
-    StateMean x_state_mean_new = StateMean(stateMat + KalmanGain * observations_diff);
+    Mat stateMat_pred = state2mat(x_state_mean_pred);
+    StateMean x_state_mean_new = StateMean(stateMat_pred + KalmanGain * observations_diff);
 
     // this vv is mathematically incorrect, since EKF doesn't know about this line
-    x_state_mean_new.direction_w = x_state_mean_new.direction_w/Norm(x_state_mean_new.direction_w);
+    x_state_mean_new.direction_w =
+        x_state_mean_new.direction_w / norm(x_state_mean_new.direction_w);
+
+    //Todo: find is it actually x_state_mean or x_state_mean_pred here
     Mat Sigma_state_cov_new = (
         Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
-        * predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
+        * predict_Sigma_full(Sigma_state_cov, x_state_mean_pred, delta_time, Pn_noise_cov);
 
     x_state_mean = x_state_mean_new;
     Sigma_state_cov = Sigma_state_cov_new;

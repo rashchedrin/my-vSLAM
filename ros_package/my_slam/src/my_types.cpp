@@ -98,6 +98,6 @@ ostream &operator<<(ostream &os, const StateMean &stateMean) {
   return os;
 }
 
-double Norm(const Quaternion &q){
+double norm(const Quaternion &q){
   return sqrt(q.w() * q.w() + q.i() * q.i() + q.j() * q.j() + q.k() * q.k());
 }
