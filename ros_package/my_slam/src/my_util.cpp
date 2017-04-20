@@ -86,11 +86,14 @@ void DrawCross(Mat output_mat, Point2d pt, Scalar color, int size){
 
 void DrawPoints(Mat &output_image,
                 const vector<Point2d> &points_coords,
-                char marker_type) {
+                char marker_type, int size) {
   for (int i_obs = 0; i_obs < points_coords.size(); ++i_obs) {
     Scalar color = hashcolor(i_obs);
     if (marker_type == 'o') {
       circle(output_image, points_coords[i_obs], 4, color, 7);
+    }
+    if (marker_type == 'c') {
+      circle(output_image, points_coords[i_obs], size, color, 1);
     }
     if (marker_type == 'x') {
       DrawCross(output_image, points_coords[i_obs], color);
@@ -113,17 +116,23 @@ Mat ImageFromMsg(const sensor_msgs::ImageConstPtr &msg){
 vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const Mat &kp_descriptors,
                                              const Mat &known_descriptors,
+                                             const vector<Point2d> &expected_positions,
+                                             int search_radius,
                                              const NormTypes &norm_type) {
   vector<Point2d> coordinates_vec;
   for (int i_known_kp = 0; i_known_kp < 4; ++i_known_kp) {
-    double min_distance =
+    double min_descr_distance =
         norm(known_descriptors.row(i_known_kp), kp_descriptors.row(0), norm_type);
     int closest_id = 0;
     for (int i_kp = 0; i_kp < key_points.size(); ++i_kp) {
-      double distance =
+      double pixel_distance = norm(expected_positions[i_known_kp] -  Point2d(key_points[i_kp].pt));
+      if(pixel_distance > search_radius){
+        continue;
+      }
+      double descr_distance =
           norm(known_descriptors.row(i_known_kp), kp_descriptors.row(i_kp), norm_type);
-      if (distance < min_distance) {
-        min_distance = distance;
+      if (descr_distance < min_descr_distance) {
+        min_descr_distance = descr_distance;
         closest_id = i_kp;
       }
     }

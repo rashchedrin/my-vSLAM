@@ -28,13 +28,15 @@ void DrawCross(Mat output_mat, Point2d pt, Scalar color = Scalar(0, 255, 0), int
 
 void DrawPoints(Mat &output_image,
                 const vector<Point2d> &points_coords,
-                char marker_type = 'o');
+                char marker_type = 'o', int size = 7);
 
 Mat ImageFromMsg(const sensor_msgs::ImageConstPtr &msg);
 
 vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const Mat &kp_descriptors,
                                              const Mat &known_descriptors,
+                                             const vector<Point2d> &expected_positions,
+                                             int search_radius,
                                              const NormTypes &norm_type = NORM_HAMMING);
 
 double limitPi(double a);
