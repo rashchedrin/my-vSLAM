@@ -56,6 +56,7 @@ StateMean predict_state(const StateMean &s0,
 }
 
 //Full matrices input
+//2N x 2N
 Mat S_t_innovation_cov(const Mat &H_t, const Mat &Sigma_predicted, double Q_sensor_noise) {
   Mat result = H_t * Sigma_predicted * H_t.t();
   for (int i = 0; i < result.rows; i++) {
@@ -127,14 +128,12 @@ Mat predict_Sigma_full(const Mat &Sigma_full,
   return result;
 }
 
-Mat Kalman_Gain(const Mat &Sigma, const Mat &H_t, double Q_sensor_noise,
+//3N+13 x 2N
+Mat Kalman_Gain(const Mat &H_t, double Q_sensor_noise,
                 const StateMean &state,
-                double delta_time,
-                const Mat &Pn_noise_cov) {
-  Mat Sigma_predicted = predict_Sigma_full(Sigma, state, delta_time, Pn_noise_cov);
+                const Mat &Pn_noise_cov, const Mat &Sigma_predicted) {
   Mat innovation_cov = S_t_innovation_cov(H_t, Sigma_predicted, Q_sensor_noise);
-
-  return Sigma * H_t.t() * innovation_cov.inv();
+  return Sigma_predicted * H_t.t() * innovation_cov.inv();
 }
 
 class MY_SLAM {
@@ -293,10 +292,14 @@ class MY_SLAM {
         predict_state(x_state_mean, Point3d(0, 0, 0), Point3d(0, 0, 0), delta_time);
     cout << "st_pred:" << endl << x_state_mean_pred << endl;
     vector<Point2d> predicted_points = predict_points(x_state_mean_pred, camera_intrinsic);
+    //yes, x_s_m
+    Mat Sigma_state_cov_pred =
+        predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
 
+//Measure
+    //Todo: make like in MonoSLAM, instead of ORB
     std::vector<KeyPoint> key_points;
     Mat kp_descriptors;
-//Measure
     ORB_detector->detectAndCompute(input_image, noArray(), key_points, kp_descriptors);
 
     auto &known_descriptors = known_descriptors_ORB_HD;
@@ -308,15 +311,17 @@ class MY_SLAM {
     DrawPoints(output_mat, predicted_points, 'x');
 
 //Update
-    //Todo: change x_state_mean to predicted_state where necessary
-    //Todo: find is it actually x_state_mean or x_state_mean_pred here
+    //Todo: change x_state_mean to x_state_mean_pred where necessary
+    //yes, x_pred
     Mat H_t = H_t_Jacobian_of_observations(x_state_mean_pred, camera_intrinsic);
     display_mat(H_t, "H_t");
     //Todo: find is it actually x_state_mean or x_state_mean_pred here v
-    Mat KalmanGain = Kalman_Gain(Sigma_state_cov, H_t, 2.5, x_state_mean_pred, delta_time, Pn_noise_cov);
+    Mat KalmanGain =
+        Kalman_Gain(H_t, 2.5, x_state_mean_pred, Pn_noise_cov, Sigma_state_cov_pred);
     display_mat(KalmanGain, "KG");
 
-    Mat observations_diff = Mat(x_state_mean_pred.feature_positions_w.size() * 2, 1, CV_64F, double(0));
+    Mat observations_diff =
+        Mat(x_state_mean_pred.feature_positions_w.size() * 2, 1, CV_64F, double(0));
     for (int i_obs = 0; i_obs < x_state_mean_pred.feature_positions_w.size(); ++i_obs) {
       observations_diff.at<double>(i_obs * 2, 0) =
           observations[i_obs].x - predicted_points[i_obs].x;
@@ -333,7 +338,7 @@ class MY_SLAM {
     //Todo: find is it actually x_state_mean or x_state_mean_pred here
     Mat Sigma_state_cov_new = (
         Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
-        * predict_Sigma_full(Sigma_state_cov, x_state_mean_pred, delta_time, Pn_noise_cov);
+        * Sigma_state_cov_pred;
 
     x_state_mean = x_state_mean_new;
     Sigma_state_cov = Sigma_state_cov_new;
