@@ -30,11 +30,11 @@ int32_t inthash(int32_t val, int32_t salt, int32_t low, int32_t high) {
 Scalar hashcolor(int32_t val, int32_t salt) {
   if(salt == 0 ) {
     switch (val) {
-      case 0: return Scalar(256, 0, 0);
+      case 0: return Scalar(255, 0, 0);
         break;
-      case 1: return Scalar(0, 256, 0);
+      case 1: return Scalar(0, 255, 0);
         break;
-      case 2: return Scalar(0, 0, 256);
+      case 2: return Scalar(0, 0, 255);
         break;
       case 3: return Scalar(0, 0, 0);
         break;
@@ -83,6 +83,15 @@ void DrawCross(Mat output_mat, Point2d pt, Scalar color, int size){
   line(output_mat, pt - s2, pt + s2, Scalar(255,255,255), 1);
 }
 
+void DrawPlus(Mat output_mat, Point2d pt, Scalar color, int size){
+  Point2d s1 = Point2d(size,0);
+  Point2d s2 = Point2d(0, size);
+  line(output_mat, pt - s1, pt + s1, color, 2);
+  line(output_mat, pt - s2, pt + s2, color, 2);
+  line(output_mat, pt - s1, pt + s1, Scalar(255,255,255), 1);
+  line(output_mat, pt - s2, pt + s2, Scalar(255,255,255), 1);
+}
+
 
 void DrawPoints(Mat &output_image,
                 const vector<Point2d> &points_coords,
@@ -96,7 +105,10 @@ void DrawPoints(Mat &output_image,
       circle(output_image, points_coords[i_obs], size, color, 1);
     }
     if (marker_type == 'x') {
-      DrawCross(output_image, points_coords[i_obs], color);
+      DrawCross(output_image, points_coords[i_obs], color, size);
+    }
+    if (marker_type == '+') {
+      DrawPlus(output_image, points_coords[i_obs], color, size);
     }
   }
 }

@@ -8,6 +8,9 @@
 #include "opencv2/xfeatures2d.hpp"
 #include "opencv2/opencv.hpp"
 
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
+
 #include "my_util.h"
 #include "my_types.h"
 #include "jacobians.h"
@@ -62,7 +65,7 @@ Mat S_t_innovation_cov(const Mat &H_t, const Mat &Sigma_predicted, double Q_sens
   return result;
 }
 
-vector<Point2d> predict_points(const StateMean &s, const Mat &camIntrinsics) {
+vector<Point2d> FeaturesProjections(const StateMean &s, const Mat &camIntrinsics) {
   vector<Point2d> result;
   for (int i_pt = 0; i_pt < s.feature_positions_w.size(); ++i_pt) {
     double q1 = s.direction_w.w();
@@ -180,9 +183,10 @@ class MY_SLAM {
   const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array);
 
   Ptr<ORB> ORB_detector;
+  vector<Point3d> trajectory;
  public:
 
-  constexpr static const double pixel_noise = 5.5;
+  constexpr static const double pixel_noise = 7.5;
   constexpr static const double position_speed_noise = 0.0001;
   constexpr static const double angular_speed_noise = 0.0001;
   constexpr static const double initial_map_uncertainty = 0;
@@ -193,6 +197,8 @@ class MY_SLAM {
     // Subscrive to input video feed and publish output video feed
     image_sub_ = it_.subscribe("image_raw", 1,
                                &MY_SLAM::subscription_callback, this);
+    pub = nh_.advertise<sensor_msgs::PointCloud2>("output", 1);
+
     Sigma_state_cov = initial_map_uncertainty * Mat::eye(25, 25, CV_64F);
     Sigma_state_cov.at<double>(0, 0) = initial_pos_uncertainty;
     Sigma_state_cov.at<double>(1, 1) = initial_pos_uncertainty;
@@ -272,7 +278,17 @@ class MY_SLAM {
 
     Mat image_in = ImageFromMsg(msg_in);
     cv::imshow("raw", image_in);
+    trajectory.push_back(x_state_mean.position_w);
     EKF_iteration(image_in);
+
+    PointCloud msg_out;
+    static uint64_t stamp = 0;
+    msg_out.header.frame_id = "map";
+    msg_out.height = msg_out.width = 200;
+    msg_out.header.stamp = ++stamp;
+    StateToMsg(x_state_mean, trajectory, &msg_out);
+    pub.publish(msg_out);
+
     cout << "Frame: " << frame_number << " call: " << call_counter << endl;
 
     if (isnan(x_state_mean.position_w.x) ||
@@ -310,7 +326,7 @@ class MY_SLAM {
     StateMean x_state_mean_pred =
         predict_state(x_state_mean, Point3d(0, 0, 0), Point3d(0, 0, 0), delta_time);
     cout << "st_pred:" << endl << x_state_mean_pred << endl;
-    vector<Point2d> predicted_points = predict_points(x_state_mean_pred, camera_intrinsic);
+    vector<Point2d> predicted_points = FeaturesProjections(x_state_mean_pred, camera_intrinsic);
     //yes, x_s_m
     Mat Sigma_state_cov_pred =
         predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
@@ -321,16 +337,16 @@ class MY_SLAM {
     ORB_detector->detectAndCompute(input_image, noArray(), key_points, kp_descriptors);
 
     auto &known_descriptors = known_descriptors_ORB_HD;
-    int search_radius = 150;
+//    int search_radius = 150;
+    int search_radius = 100;
     vector<Point2d> observations = GetMatchingPointsCoordinates(key_points,
                                                                 kp_descriptors,
                                                                 known_descriptors,
                                                                 predicted_points,
                                                                 search_radius);
     DrawPoints(output_mat, observations);
-    DrawPoints(output_mat, predicted_points, 'x');
+//    DrawPoints(output_mat, predicted_points, 'x', 5);
     DrawPoints(output_mat, predicted_points, 'c', search_radius);
-    cv::imshow(OPENCV_WINDOW, output_mat);
     Mat observations_diff =
         Mat(x_state_mean_pred.feature_positions_w.size() * 2, 1, CV_64F, double(0));
     for (int i_obs = 0; i_obs < x_state_mean_pred.feature_positions_w.size(); ++i_obs) {
@@ -361,6 +377,9 @@ class MY_SLAM {
     x_state_mean = x_state_mean_new;
     Sigma_state_cov = Sigma_state_cov_new;
     cout << endl;
+    vector<Point2d> reprojected_points = FeaturesProjections(x_state_mean_new, camera_intrinsic);
+    DrawPoints(output_mat, reprojected_points, '+', 5);
+    cv::imshow(OPENCV_WINDOW, output_mat);
   }
 };
 

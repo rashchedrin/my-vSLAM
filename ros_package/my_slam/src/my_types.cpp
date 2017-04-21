@@ -6,6 +6,9 @@
 #include "my_util.h"
 #include "opencv2/opencv.hpp"
 
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
+
 using namespace std;
 using namespace cv;
 
@@ -27,35 +30,35 @@ Quaternion operator*(const Quaternion &q1, const Quaternion &q2) {
   return res;
 }
 
-Quaternion operator*(const Quaternion &q, double val){
+Quaternion operator*(const Quaternion &q, double val) {
   return Quaternion(q.w() * val, q.i() * val, q.j() * val, q.k() * val);
 }
-Quaternion operator*(double val, const Quaternion &q){
+Quaternion operator*(double val, const Quaternion &q) {
   return q * val;
 }
-Quaternion operator/(const Quaternion &q, double val){
-  return q * (1.0/val);
+Quaternion operator/(const Quaternion &q, double val) {
+  return q * (1.0 / val);
 }
 
-Mat state2mat(StateMean s){
+Mat state2mat(StateMean s) {
   int size = 13 + 3 * s.feature_positions_w.size();
-  Mat result(size,1,CV_64F);
-  result.at<double>(0,0) = s.position_w.x;
-  result.at<double>(1,0) = s.position_w.y;
-  result.at<double>(2,0) = s.position_w.z;
+  Mat result(size, 1, CV_64F);
+  result.at<double>(0, 0) = s.position_w.x;
+  result.at<double>(1, 0) = s.position_w.y;
+  result.at<double>(2, 0) = s.position_w.z;
 
-  result.at<double>(3,0) = s.direction_w.w();
-  result.at<double>(4,0) = s.direction_w.i();
-  result.at<double>(5,0) = s.direction_w.j();
-  result.at<double>(6,0) = s.direction_w.k();
+  result.at<double>(3, 0) = s.direction_w.w();
+  result.at<double>(4, 0) = s.direction_w.i();
+  result.at<double>(5, 0) = s.direction_w.j();
+  result.at<double>(6, 0) = s.direction_w.k();
 
-  result.at<double>(7,0) = s.velocity_w.x;
-  result.at<double>(8,0) = s.velocity_w.y;
-  result.at<double>(9,0) = s.velocity_w.z;
-  result.at<double>(10,0) = s.angular_velocity_r.x;
-  result.at<double>(11,0) = s.angular_velocity_r.y;
-  result.at<double>(12,0) = s.angular_velocity_r.z;
-  for (int i_pt = 0; i_pt < s.feature_positions_w.size(); ++i_pt){
+  result.at<double>(7, 0) = s.velocity_w.x;
+  result.at<double>(8, 0) = s.velocity_w.y;
+  result.at<double>(9, 0) = s.velocity_w.z;
+  result.at<double>(10, 0) = s.angular_velocity_r.x;
+  result.at<double>(11, 0) = s.angular_velocity_r.y;
+  result.at<double>(12, 0) = s.angular_velocity_r.z;
+  for (int i_pt = 0; i_pt < s.feature_positions_w.size(); ++i_pt) {
     result.at<double>(13 + i_pt * 3 + 0, 0) = s.feature_positions_w[i_pt].x;
     result.at<double>(13 + i_pt * 3 + 1, 0) = s.feature_positions_w[i_pt].y;
     result.at<double>(13 + i_pt * 3 + 2, 0) = s.feature_positions_w[i_pt].z;
@@ -91,14 +94,44 @@ StateMean::StateMean(Mat m) {
   }
 }
 ostream &operator<<(ostream &os, const StateMean &stateMean) {
-  os << "position_w:\t" << stateMean.position_w <<endl
-     << "direction_w:\t" << stateMean.direction_w <<" phi = "<<limitPi(acos(stateMean.direction_w.w())*2)<<endl
-     << "velocity_w:\t" << stateMean.velocity_w <<endl
-     << "angular_velocity_r:\t"  << stateMean.angular_velocity_r<<" phi = "<<limitPi(norm(stateMean.angular_velocity_r) )<<endl
+  os << "position_w:\t" << stateMean.position_w << endl
+     << "direction_w:\t" << stateMean.direction_w << " phi = "
+     << limitPi(acos(stateMean.direction_w.w()) * 2) << endl
+     << "velocity_w:\t" << stateMean.velocity_w << endl
+     << "angular_velocity_r:\t" << stateMean.angular_velocity_r << " phi = "
+     << limitPi(norm(stateMean.angular_velocity_r)) << endl
      << "feature_positions_w:\n" << stateMean.feature_positions_w;
   return os;
 }
 
-double norm(const Quaternion &q){
+double norm(const Quaternion &q) {
   return sqrt(q.w() * q.w() + q.i() * q.i() + q.j() * q.j() + q.k() * q.k());
+}
+
+void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *points3D) {
+  pcl::PointXYZRGB camera_pt(255, 255, 255);
+  camera_pt.x = s.position_w.x;
+  camera_pt.y = s.position_w.y;
+  camera_pt.z = s.position_w.z;
+  points3D->push_back(camera_pt);
+
+  for (int i_traj_pt = 0; i_traj_pt < trajectory.size(); ++i_traj_pt) {
+//    Scalar pt_color = hashcolor(i_traj_pt,1);
+    double brightness = 1.0*i_traj_pt / trajectory.size() * 255.0;
+    pcl::PointXYZRGB point3d(brightness,brightness, brightness);
+    point3d.x = trajectory[i_traj_pt].x;
+    point3d.y = trajectory[i_traj_pt].y;
+    point3d.z = trajectory[i_traj_pt].z;
+    points3D->push_back(point3d);
+  }
+
+  for (int i_map_pt = 0; i_map_pt < s.feature_positions_w.size(); ++i_map_pt) {
+    Scalar pt_color = hashcolor(i_map_pt);
+    pcl::PointXYZRGB point3d(pt_color[2], pt_color[1], pt_color[0]);
+    point3d.x = s.feature_positions_w[i_map_pt].x;
+    point3d.y = s.feature_positions_w[i_map_pt].y;
+    point3d.z = s.feature_positions_w[i_map_pt].z;
+    points3D->push_back(point3d);
+  }
+
 }

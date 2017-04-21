@@ -7,8 +7,14 @@
 
 #include <ostream>
 #include "opencv2/opencv.hpp"
+
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
+
 using namespace std;
 using namespace cv;
+
+typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 
 class Quaternion {
  public:
@@ -105,5 +111,7 @@ struct StateMean {
 };
 
 Mat state2mat(StateMean s);
+
+void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *points3D);
 
 #endif //MY_SLAM_MY_TYPES_H
