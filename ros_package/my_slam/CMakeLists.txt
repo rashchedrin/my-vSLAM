@@ -15,7 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 set(CMAKE_CXX_STANDARD 11)
 
-set(SOURCE_FILES src/my_slam_node.cpp src/jacobians.cpp src/my_types.cpp src/my_util.cpp src/jacobians.h src/my_types.h src/my_util.h)
+set(SOURCE_FILES src/my_slam_node.cpp src/jacobians.cpp src/my_types.cpp src/my_util.cpp src/jacobians.h src/my_types.h src/my_util.h src/my_geometry.cpp src/my_geometry.h)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)

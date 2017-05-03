@@ -40,4 +40,21 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const NormTypes &norm_type = NORM_HAMMING);
 
 double limitPi(double a);
+
+double NormalPdf2d(const Mat &sigma, Vec2d mean, Vec2d x);
+
+Point2i L2MatchingPosition(const Mat &image, const Mat &patch, Rect search_region);
+
+//double norm(const vector<double> &vec);
+
+//double sum(const vector<double> &vec);
+
+void normalize(vector<double> *vec);
+
+void normalize(vector<double> *vec, double divisor);
+
+Mat L2DistanceMat(const Mat &image, const Mat &patch);
+Point2i ArgMin(Mat values);
+Mat CovarianceAlongLine(double x, double y, double z, double dispersion, double perp_dispersion);
+
 #endif //MY_SLAM_MY_UTIL_H

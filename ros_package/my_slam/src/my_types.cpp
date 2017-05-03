@@ -4,6 +4,7 @@
 
 #include "my_types.h"
 #include "my_util.h"
+#include "my_geometry.h"
 #include "opencv2/opencv.hpp"
 
 #include <pcl_ros/point_cloud.h>
@@ -47,10 +48,10 @@ Mat state2mat(StateMean s) {
   result.at<double>(1, 0) = s.position_w.y;
   result.at<double>(2, 0) = s.position_w.z;
 
-  result.at<double>(3, 0) = s.direction_w.w();
-  result.at<double>(4, 0) = s.direction_w.i();
-  result.at<double>(5, 0) = s.direction_w.j();
-  result.at<double>(6, 0) = s.direction_w.k();
+  result.at<double>(3, 0) = s.direction_wr.w();
+  result.at<double>(4, 0) = s.direction_wr.i();
+  result.at<double>(5, 0) = s.direction_wr.j();
+  result.at<double>(6, 0) = s.direction_wr.k();
 
   result.at<double>(7, 0) = s.velocity_w.x;
   result.at<double>(8, 0) = s.velocity_w.y;
@@ -83,7 +84,7 @@ StateMean::StateMean(Mat m) {
   double wy = m.at<double>(11, 0);
   double wz = m.at<double>(12, 0);
   position_w = Point3d(rx, ry, rz);
-  direction_w = Quaternion(qw, qi, qj, qk);
+  direction_wr = Quaternion(qw, qi, qj, qk);
   velocity_w = Point3d(vx, vy, vz);
   angular_velocity_r = Point3d(wx, wy, wz);
   for (int i_pt = 0; i_pt < n_points; ++i_pt) {
@@ -95,8 +96,8 @@ StateMean::StateMean(Mat m) {
 }
 ostream &operator<<(ostream &os, const StateMean &stateMean) {
   os << "position_w:\t" << stateMean.position_w << endl
-     << "direction_w:\t" << stateMean.direction_w << " phi = "
-     << limitPi(acos(stateMean.direction_w.w()) * 2) << endl
+     << "direction_wr:\t" << stateMean.direction_wr << " phi = "
+     << limitPi(acos(stateMean.direction_wr.w()) * 2) << endl
      << "velocity_w:\t" << stateMean.velocity_w << endl
      << "angular_velocity_r:\t" << stateMean.angular_velocity_r << " phi = "
      << limitPi(norm(stateMean.angular_velocity_r)) << endl
@@ -117,8 +118,8 @@ void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *poin
 
   for (int i_traj_pt = 0; i_traj_pt < trajectory.size(); ++i_traj_pt) {
 //    Scalar pt_color = hashcolor(i_traj_pt,1);
-    double brightness = 1.0*i_traj_pt / trajectory.size() * 255.0;
-    pcl::PointXYZRGB point3d(brightness,brightness, brightness);
+    double brightness = 1.0 * i_traj_pt / trajectory.size() * 255.0;
+    pcl::PointXYZRGB point3d(brightness, brightness * 0.8 + 0.2 * 255, brightness);
     point3d.x = trajectory[i_traj_pt].x;
     point3d.y = trajectory[i_traj_pt].y;
     point3d.z = trajectory[i_traj_pt].z;
@@ -134,4 +135,98 @@ void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *poin
     points3D->push_back(point3d);
   }
 
+}
+
+Vec3d RotateByQuat(const Quaternion &q, const Vec3d &v) {
+  Quaternion resq = q * Vec2Quat(v) * conj(q);
+  return Vec3d(resq.i(), resq.j(), resq.k());
+}
+
+Vec3d Direction(const Quaternion &q_wr) {
+  return RotateByQuat(q_wr, Vec3d(0, 0, 1));
+}
+
+Quaternion QuaternionFromAxisAngle(Point3d axis_angle) {
+  Quaternion res;
+  double theta = norm(axis_angle);
+  if(theta < 0.0000000001){
+    return Quaternion(1,0,0,0);
+  }
+  Point3d unit_vec = axis_angle / theta;
+  res.w() = cos(theta / 2);
+  res.i() = unit_vec.x * sin(theta / 2);
+  res.j() = unit_vec.y * sin(theta / 2);
+  res.k() = unit_vec.z * sin(theta / 2);
+  return res;
+}
+
+Quaternion conj(const Quaternion &q) {
+  return Quaternion{q.w(), -q.i(), -q.j(), -q.k()};
+}
+
+Quaternion Vec2Quat(const Vec3d &v) {
+  return Quaternion{0, v[0], v[1], v[2]};
+}
+
+PartiallyInitializedPoint::PartiallyInitializedPoint(Point2i position_2d,
+                                                     Mat image,
+                                                     const StateMean &s,
+                                                     Mat cam_intrinsic) :
+    prob_distribution(N_prob_segments, 1.0f / N_prob_segments) {
+  position = s.position_w;
+  Vec3d rel_ray = RayFromXY_rel(position_2d.x, position_2d.y, cam_intrinsic);
+  ray_direction = RotateByQuat(s.direction_wr, rel_ray);
+  image_normal_direction = s.direction_wr; // Todo: change to direction from MonoSLAM (ortogonal to line)
+  int vicinity_w = 11;
+  int vicinity_h = 11;
+  Rect vicinity
+      {position_2d.x - vicinity_w / 2,
+       position_2d.y - vicinity_h / 2,
+       vicinity_w,
+       vicinity_h};
+  image_patch = image(vicinity).clone();
+
+  int bigger_vicinity_w = 33;
+  int bigger_vicinity_h = 33;
+  Rect bigger_vicinity
+      {position_2d.x - bigger_vicinity_w / 2,
+       position_2d.y - bigger_vicinity_h / 2,
+       bigger_vicinity_w,
+       bigger_vicinity_h};
+  Mat bigger_patch = image(bigger_vicinity).clone();
+
+  int nfeatures = 10;
+  float scaleFactor = 1.2f;
+  int nlevels = 8;
+  int edgeThreshold = 15; // Changed default (31);
+  int firstLevel = 0;
+  int WTA_K = 2;
+  int scoreType = ORB::HARRIS_SCORE;
+  int patchSize = 31;
+  int fastThreshold = 20;
+
+  Ptr<ORB> detector = ORB::create(
+      nfeatures,
+      scaleFactor,
+      nlevels,
+      edgeThreshold,
+      firstLevel,
+      WTA_K,
+      scoreType,
+      patchSize,
+      fastThreshold
+  );
+  Mat descriptors;
+  std::vector<KeyPoint> keypoints;
+  detector->detectAndCompute(bigger_patch, noArray(), keypoints, descriptors);
+  if(keypoints.size() <= 0){
+    cerr<<"Failed to initialize new descriptor"<<endl;
+    exit(1);
+  }
+  ORB_descriptor = descriptors.row(0).clone();
+  sigma3d = CovarianceAlongLine(ray_direction[0],
+                                ray_direction[1],
+                                ray_direction[2],
+                                2*dist_resolution, // todo: calculate properly
+                                0.02 * dist_resolution);
 }
