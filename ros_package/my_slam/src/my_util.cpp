@@ -131,10 +131,10 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              int search_radius,
                                              const NormTypes &norm_type) {
   vector<Point2d> coordinates_vec;
-  for (int i_known_kp = 0; i_known_kp < 4; ++i_known_kp) {
+  for (int i_known_kp = 0; i_known_kp < known_descriptors.rows; ++i_known_kp) {
     double min_descr_distance =
         norm(known_descriptors.row(i_known_kp), kp_descriptors.row(0), norm_type);
-    int closest_id = 0;
+    int closest_id = -1;
     for (int i_kp = 0; i_kp < key_points.size(); ++i_kp) {
       double pixel_distance = norm(expected_positions[i_known_kp] - Point2d(key_points[i_kp].pt));
       if (pixel_distance > search_radius) {
@@ -147,7 +147,11 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
         closest_id = i_kp;
       }
     }
-    coordinates_vec.push_back(key_points[closest_id].pt);
+    if(closest_id == -1){
+      coordinates_vec.push_back(expected_positions[i_known_kp]); //Todo: think and fix
+    }else{
+      coordinates_vec.push_back(key_points[closest_id].pt);
+    }
   }
   return coordinates_vec;
 }

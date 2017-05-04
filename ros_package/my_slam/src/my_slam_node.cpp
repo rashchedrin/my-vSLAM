@@ -388,14 +388,19 @@ class MY_SLAM {
 
     EKF_iteration(current_frame);
     UpdatePartiallyInitializedFeaturs(current_frame);
-//    ConvertToFullyInitialized();
+    ConvertToFullyInitialized();
     DetectNewFeatures(current_frame);
-
+    ShowAxis();
     cv::imshow(OPENCV_WINDOW, output_mat);
 
     PublishAll();
-
-    dbg << "Frame: " << frame_number << " call: " << call_counter << endl;
+    rand();
+    rand();
+    rand();
+    rand();
+    rand();
+    rand();
+    dbg << "Frame: " << frame_number << " call: " << call_counter << " rand: "<<rand()<<endl;
     if (!IsStateCorrect()) {
       exit(0);
     }
@@ -403,6 +408,30 @@ class MY_SLAM {
     if (cv::waitKey(1) == 27) {
       exit(0);
     }
+  }
+
+  void ShowAxis() {
+    double size = 50; //cm
+    Point3d origin = Point3d(0,8,100);
+    Point2d O = ProjectPoint(origin + Point3d(0, 0, 0),
+                                x_state_mean.position_w,
+                                x_state_mean.direction_wr,
+                                camera_intrinsic);
+    Point2d X = ProjectPoint(origin + Point3d(size, 0, 0),
+                             x_state_mean.position_w,
+                             x_state_mean.direction_wr,
+                             camera_intrinsic);
+    Point2d Y = ProjectPoint(origin + Point3d(0, size, 0),
+                             x_state_mean.position_w,
+                             x_state_mean.direction_wr,
+                             camera_intrinsic);
+    Point2d Z = ProjectPoint(origin + Point3d(0, 0, size),
+                             x_state_mean.position_w,
+                             x_state_mean.direction_wr,
+                             camera_intrinsic);
+    line(output_mat, O, X, Scalar(255, 0, 0));
+    line(output_mat, O, Y, Scalar(0, 255, 0));
+    line(output_mat, O, Z, Scalar(0, 0, 255));
   }
 
   void ConvertToFullyInitialized() {
@@ -460,6 +489,7 @@ class MY_SLAM {
 //Predict
     StateMean x_state_mean_pred =
         predict_state(x_state_mean, Point3d(0, 0, 0), Point3d(0, 0, 0), delta_time);
+    dbg<<"predict:"<<endl<<x_state_mean_pred<<endl;
     vector<Point2d> predicted_points = FeaturesProjections(x_state_mean_pred, camera_intrinsic);
     //yes, x_s_m
     Mat Sigma_state_cov_pred =
@@ -471,7 +501,7 @@ class MY_SLAM {
     ORB_detector->detectAndCompute(input_image, noArray(), key_points, kp_descriptors);
 
     auto &known_descriptors = known_ORB_descriptors;
-    int search_radius = 100;
+    int search_radius = 45;
     //Todo: take covariance into account for search.
     vector<Point2d> observations = GetMatchingPointsCoordinates(key_points,
                                                                 kp_descriptors,
@@ -493,7 +523,8 @@ class MY_SLAM {
     static int call_count = 0;
     call_count++;
     obs_diff_accum += norm(observations_diff);
-    cout << "Mean predict_diff: " << obs_diff_accum / call_count << endl;
+    dbg << "predict diff: " << norm(observations_diff) << endl;
+    dbg << "Mean predict diff: " << obs_diff_accum / call_count << endl;
     if (norm(observations_diff) > 1000) {
       cout << "norm(observations_diff) > 1000" << endl;
       return;
@@ -520,6 +551,11 @@ class MY_SLAM {
     cout << endl;
     reprojected_points = FeaturesProjections(x_state_mean_new, camera_intrinsic);
     DrawPoints(output_mat, reprojected_points, '+', 5);
+    dbg<<"repr, obs size:"<<endl;
+    dbg<<reprojected_points.size()<<endl;
+    dbg<<observations.size()<<endl;
+    dbg<<known_descriptors.size()<<endl;
+//    dbg<<"Reprojection error: "<<norm(reprojected_points, observations)<<endl;
   }
  public:
 
@@ -532,11 +568,13 @@ class MY_SLAM {
 //  constexpr static const double initial_direction_uncertainty = 10;
 //  initial_angular_velocity = 2*pi;
   constexpr static const double pixel_noise = 11;
-  constexpr static const double position_speed_noise = 1;
-  constexpr static const double angular_speed_noise = 1;
-  constexpr static const double initial_map_uncertainty = 1;
-  constexpr static const double initial_pos_uncertainty = 5;
-  constexpr static const double initial_direction_uncertainty = 1;
+  constexpr static const double position_speed_noise = 0.1;
+  constexpr static const double angular_speed_noise = 0.1;
+  constexpr static const double initial_map_uncertainty = 2;
+  constexpr static const double initial_pos_uncertainty = 2;
+  constexpr static const double initial_direction_uncertainty = 0.5;
+  constexpr static const double initial_speed_uncertainty = 0.0001;
+  constexpr static const double initial_angular_speed_uncertainty = 0.1;
   MY_SLAM()
       : it_(nh_) {
     // Subscrive to input video feed and publish output video feed
@@ -552,6 +590,12 @@ class MY_SLAM {
     Sigma_state_cov.at<double>(4, 4) = initial_direction_uncertainty;
     Sigma_state_cov.at<double>(5, 5) = initial_direction_uncertainty;
     Sigma_state_cov.at<double>(6, 6) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(7, 7) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(8, 8) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(9, 9) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(10, 10) = initial_angular_speed_uncertainty;
+    Sigma_state_cov.at<double>(11, 11) = initial_angular_speed_uncertainty;
+    Sigma_state_cov.at<double>(12, 12) = initial_angular_speed_uncertainty;
 
 //    Sigma_state_cov.at<double>(22, 22) = 1000; //todo:remove
 //    Sigma_state_cov.at<double>(23, 23) = 1000;
@@ -562,7 +606,9 @@ class MY_SLAM {
     Pn_noise_cov.at<double>(5, 5) = angular_speed_noise;
     //Todo: fix no-rotation == 2Pi. Really it only works if delta_time = 1
     x_state_mean.angular_velocity_r =
-        Point3d(2 * pi*0.000000000001, 0, 0);// no rotation, 2*pi needed to eliminate indeterminance
+        Point3d(2 * pi * 0.000000000001,
+                0,
+                0);// no rotation, 2*pi needed to eliminate indeterminance
     x_state_mean.direction_wr = Quaternion(1, 0, 0, 0.0); // Zero rotation
     x_state_mean.position_w = Point3d(0, 0, 0);
     x_state_mean.velocity_w = Point3d(0, 0, 0);
