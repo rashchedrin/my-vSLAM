@@ -171,7 +171,7 @@ Quaternion Vec2Quat(const Vec3d &v) {
 PartiallyInitializedPoint::PartiallyInitializedPoint(Point2i position_2d,
                                                      Mat image,
                                                      const StateMean &s,
-                                                     Mat cam_intrinsic) :
+                                                     Mat cam_intrinsic, bool *success) :
     prob_distribution(N_prob_segments, 1.0f / N_prob_segments) {
   position = s.position_w;
   Vec3d rel_ray = RayFromXY_rel(position_2d.x, position_2d.y, cam_intrinsic);
@@ -195,7 +195,7 @@ PartiallyInitializedPoint::PartiallyInitializedPoint(Point2i position_2d,
        bigger_vicinity_h};
   Mat bigger_patch = image(bigger_vicinity).clone();
 
-  int nfeatures = 10;
+  int nfeatures = 50; //Todo: change to propper value
   float scaleFactor = 1.2f;
   int nlevels = 8;
   int edgeThreshold = 15; // Changed default (31);
@@ -220,9 +220,10 @@ PartiallyInitializedPoint::PartiallyInitializedPoint(Point2i position_2d,
   std::vector<KeyPoint> keypoints;
   detector->detectAndCompute(bigger_patch, noArray(), keypoints, descriptors);
   if(keypoints.size() <= 0){
-    cerr<<"Failed to initialize new descriptor"<<endl;
-    exit(1);
+    *success = false;
+    return;
   }
+  *success = true;
   ORB_descriptor = descriptors.row(0).clone();
   sigma3d = CovarianceAlongLine(ray_direction[0],
                                 ray_direction[1],
@@ -230,3 +231,4 @@ PartiallyInitializedPoint::PartiallyInitializedPoint(Point2i position_2d,
                                 2*dist_resolution, // todo: calculate properly
                                 0.02 * dist_resolution);
 }
+

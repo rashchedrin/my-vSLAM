@@ -91,12 +91,12 @@ Mat predict_Sigma_cam(const Mat &Sigma_cam,
 }
 
 Mat predict_Sigma_full(const Mat &Sigma_full,
-                       const StateMean &s,
+                       const StateMean &state,
                        double delta_time,
                        const Mat &Pn_noise_cov) {
   Mat result = Sigma_full.clone();
   Mat Sigma_cam_area = result(Rect(0, 0, 13, 13));
-  Mat Sigma_cam_pred = predict_Sigma_cam(Sigma_cam_area, s, delta_time, Pn_noise_cov);
+  Mat Sigma_cam_pred = predict_Sigma_cam(Sigma_cam_area, state, delta_time, Pn_noise_cov);
   Sigma_cam_pred.copyTo(Sigma_cam_area);
   return result;
 }
@@ -141,7 +141,7 @@ class MY_SLAM {
        122, 158, 128, 111, 253, 132, 150, 97, 33, 0, 230, 170}
   };
 
-  Mat known_ORB_descriptors = Mat(4, 32, CV_8UC1, &known_descriptors_array_ORB_HD);
+  Mat known_ORB_descriptors = Mat(4, 32, CV_8UC1, &known_descriptors_array_ORB_HD).clone();
 
 //</editor-fold>
   //calibrated
@@ -154,7 +154,7 @@ class MY_SLAM {
                                           {0., -1.0166722592048205e+03, 375.785},
                                           {0., 0., 1.}};
 
-  const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array);
+  const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array).clone();
 
   bool IsStateCorrect() {
     if (isnan(x_state_mean.position_w.x) ||
@@ -180,7 +180,7 @@ class MY_SLAM {
     return true;
   }
 
-  Rect GetRandomInterestingRectangle(int padding = 6, int width = 150, int height = 100) {
+  Rect GetRandomInterestingRectangle(int padding = 15, int width = 150, int height = 100) {
     //Properties:
     // [V] 1. Doesn't contain any already-known features
     // [ ] 2. Will not disappear immediately //Todo
@@ -251,7 +251,7 @@ class MY_SLAM {
   void DetectNewFeatures(Mat image) {
     static int call_counter = 0;
     call_counter++;
-    if (call_counter % 400 != 10) {
+    if (call_counter % 40 != 1) {
       return;
     }
     Rect roi = GetRandomInterestingRectangle();
@@ -262,22 +262,26 @@ class MY_SLAM {
     if (new_candidate.x < 0) {
       return;
     }
-
-    partially_initialized_pts.push_back(PartiallyInitializedPoint(new_candidate,
-                                                                  current_frame,
-                                                                  x_state_mean,
-                                                                  camera_intrinsic));
+    bool success;
+    auto point = PartiallyInitializedPoint(new_candidate,
+                                           current_frame,
+                                           x_state_mean,
+                                           camera_intrinsic, &success);
+    if(!success){
+      return;
+    }
+    partially_initialized_pts.push_back(point);
     DrawCross(output_mat, new_candidate, Scalar(255, 255, 255), 10);
   }
 
   void UpdatePartiallyInitializedFeaturs(Mat image) {
     int i_pt = 0;
     for (auto &&pt :partially_initialized_pts) {
-      Point2d coord_2d = ProjectPoint(pt.position,
+      Point2d origin_2d = ProjectPoint(pt.position,
                                       x_state_mean.position_w,
                                       x_state_mean.direction_wr,
                                       camera_intrinsic);
-      DrawCross(output_mat, coord_2d, Scalar(0, 255, 255), 5);
+      DrawCross(output_mat, origin_2d, Scalar(0, 255, 255), 5);
 //      Mat distances = L2DistanceMat(image,pt.image);
       Mat distances
           (image.rows - pt.image_patch.rows + 1, image.cols - pt.image_patch.cols + 1, CV_32FC1);
@@ -394,13 +398,7 @@ class MY_SLAM {
     cv::imshow(OPENCV_WINDOW, output_mat);
 
     PublishAll();
-    rand();
-    rand();
-    rand();
-    rand();
-    rand();
-    rand();
-    dbg << "Frame: " << frame_number << " call: " << call_counter << " rand: "<<rand()<<endl;
+    dbg << "Frame: " << frame_number << " call: " << call_counter <<endl;
     if (!IsStateCorrect()) {
       exit(0);
     }
@@ -435,7 +433,7 @@ class MY_SLAM {
   }
 
   void ConvertToFullyInitialized() {
-    for (list<PartiallyInitializedPoint>::iterator pt_it = partially_initialized_pts.begin();
+    for (auto pt_it = partially_initialized_pts.begin();
          pt_it != partially_initialized_pts.end();) {
       bool remove_this_pt = false;
       int prob_argmax = 0;
@@ -465,11 +463,11 @@ class MY_SLAM {
     Point3d pt_pos = pt.position + pt.ray_direction * prob_argmax * pt.dist_resolution;
     x_state_mean.feature_positions_w.push_back(pt_pos);
     // Add descriptor
-    known_ORB_descriptors.push_back(pt.ORB_descriptor);
-    Mat new_Sigma(Sigma_state_cov.rows + 3, Sigma_state_cov.cols + 3, CV_64F);
+    known_ORB_descriptors.push_back(pt.ORB_descriptor.clone());
+    Mat new_Sigma(Sigma_state_cov.rows + 3, Sigma_state_cov.cols + 3, CV_64F, double(0));
     Sigma_state_cov.copyTo(new_Sigma(Rect(0, 0, Sigma_state_cov.cols, Sigma_state_cov.rows)));
     pt.sigma3d.copyTo(new_Sigma(Rect(Sigma_state_cov.cols, Sigma_state_cov.rows, 3, 3)));
-    Sigma_state_cov = new_Sigma;
+    Sigma_state_cov = new_Sigma.clone();
   }
 
   void PublishAll() const {
@@ -568,7 +566,7 @@ class MY_SLAM {
 //  constexpr static const double initial_direction_uncertainty = 10;
 //  initial_angular_velocity = 2*pi;
   constexpr static const double pixel_noise = 11;
-  constexpr static const double position_speed_noise = 0.1;
+  constexpr static const double position_speed_noise = 1;
   constexpr static const double angular_speed_noise = 0.1;
   constexpr static const double initial_map_uncertainty = 2;
   constexpr static const double initial_pos_uncertainty = 2;

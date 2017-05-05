@@ -131,7 +131,7 @@ struct PartiallyInitializedPoint {
   Vec3d ray_direction;
   Quaternion image_normal_direction; // normal to the image plane, with sign --->img|
   std::vector<double> prob_distribution;
-  PartiallyInitializedPoint(Point2i position_2d, Mat image, const StateMean &s, Mat cam_intrinsic);
+  PartiallyInitializedPoint(Point2i position_2d, Mat image, const StateMean &s, Mat cam_intrinsic, bool *success);
 };
 
 #endif //MY_SLAM_MY_TYPES_H
