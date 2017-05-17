@@ -11,10 +11,9 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 
-
 using namespace std;
 using namespace cv;
-
+const int N_VARS_FOR_CAMERA = 13;
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 
 class Quaternion {
@@ -78,14 +77,11 @@ class Quaternion {
 };
 
 //Get Quaternion from angles
-Quaternion QuaternionFromAxisAngle(Point3d axis_angle) ;
-
+Quaternion QuaternionFromAxisAngle(Point3d axis_angle);
 
 Quaternion conj(const Quaternion &q);
 
-
 Quaternion Vec2Quat(const Vec3d &v);
-
 
 Vec3d RotateByQuat(const Quaternion &q, const Vec3d &v);
 Vec3d Direction(const Quaternion &q_wr);
@@ -129,9 +125,46 @@ struct PartiallyInitializedPoint {
   Mat ORB_descriptor;
   Vec3d position;
   Vec3d ray_direction;
+  int life_duration;
   Quaternion image_normal_direction; // normal to the image plane, with sign --->img|
   std::vector<double> prob_distribution;
-  PartiallyInitializedPoint(Point2i position_2d, Mat image, const StateMean &s, Mat cam_intrinsic, bool *success);
+  PartiallyInitializedPoint(Point2i position_2d,
+                            const Mat &image,
+                            const StateMean &s,
+                            Mat cam_intrinsic,
+                            Ptr<ORB> detector,
+                            bool *success);
+
+  PartiallyInitializedPoint(KeyPoint keypt,
+                            const Mat &descriptor,
+                            const Mat &image,
+                            const StateMean &s,
+                            Mat cam_intrinsic);
+};
+
+StateMean ToSparseState(const StateMean &state_full, const vector<bool> &is_included);
+Mat ToSparseMat(const Mat &full_mat, const vector<bool> &is_included);
+Mat ToSparseSigma(const Mat &full_sigma, const vector<bool> &is_included);
+
+Mat UpdateFromSparse(const Mat &old_mat,
+                     const Mat &new_sparse_mat,
+                     const vector<bool> &is_included);
+
+StateMean UpdateFromSparseState(const StateMean &old_state,
+                                const StateMean &new_sparse_state,
+                                const vector<bool> &is_included);
+
+struct PointStatistics{
+  double traveled_distance;
+  double sum_squared_reproj_distance;
+  int first_frame;
+  int n_observations;
+  int expected_observations;
+  Point3d initial_position;
+
+  double mean_squared_detector_distance(){
+    return sum_squared_reproj_distance / n_observations;
+  }
 };
 
 #endif //MY_SLAM_MY_TYPES_H

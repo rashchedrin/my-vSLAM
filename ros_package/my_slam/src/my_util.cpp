@@ -119,7 +119,7 @@ Mat ImageFromMsg(const sensor_msgs::ImageConstPtr &msg) {
   }
   catch (cv_bridge::Exception &e) {
     ROS_ERROR("cv_bridge exception: %s", e.what());
-    exit(1);
+    ros::shutdown();
   }
   return cv_ptr->image;
 }
@@ -129,8 +129,10 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const Mat &known_descriptors,
                                              const vector<Point2d> &expected_positions,
                                              int search_radius,
-                                             const NormTypes &norm_type) {
+                                             const NormTypes &norm_type,
+                                             vector<bool> *isFound) {
   vector<Point2d> coordinates_vec;
+  isFound->resize(known_descriptors.rows);
   for (int i_known_kp = 0; i_known_kp < known_descriptors.rows; ++i_known_kp) {
     double min_descr_distance =
         norm(known_descriptors.row(i_known_kp), kp_descriptors.row(0), norm_type);
@@ -148,8 +150,10 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
       }
     }
     if(closest_id == -1){
+      (*isFound)[i_known_kp] = false;
       coordinates_vec.push_back(expected_positions[i_known_kp]); //Todo: think and fix
     }else{
+      (*isFound)[i_known_kp] = true;
       coordinates_vec.push_back(key_points[closest_id].pt);
     }
   }
@@ -251,6 +255,18 @@ Mat CovarianceAlongLine(double x, double y, double z, double dispersion, double 
   return res.clone();
 }
 
-void draw_covariance_mat_ellipse(){
+void draw_covariance_mat_ellipse(Point2d center, Mat covariance){
 
+}
+
+
+vector<Point2d> ToSparseVec(const vector<Point2d> &full_vec, const vector<bool> &is_included){
+  assert(is_included.size() == full_vec.size());
+  vector<Point2d> sparse_vec;
+  for(int i = 0; i < full_vec.size(); ++i){
+    if(is_included[i]){
+      sparse_vec.push_back(full_vec[i]);
+    }
+  }
+  return sparse_vec;
 }

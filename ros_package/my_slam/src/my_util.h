@@ -37,7 +37,8 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const Mat &known_descriptors,
                                              const vector<Point2d> &expected_positions,
                                              int search_radius,
-                                             const NormTypes &norm_type = NORM_HAMMING);
+                                             const NormTypes &norm_type,
+                                             vector<bool> *isFound);
 
 double limitPi(double a);
 
@@ -56,5 +57,7 @@ void normalize(vector<double> *vec, double divisor);
 Mat L2DistanceMat(const Mat &image, const Mat &patch);
 Point2i ArgMin(Mat values);
 Mat CovarianceAlongLine(double x, double y, double z, double dispersion, double perp_dispersion);
+
+vector<Point2d> ToSparseVec(const vector<Point2d> &full_vec, const vector<bool> &is_included);
 
 #endif //MY_SLAM_MY_UTIL_H
