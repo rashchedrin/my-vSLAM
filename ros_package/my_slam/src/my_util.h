@@ -10,6 +10,7 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include "my_types.h"
 
 using namespace cv;
 using namespace std;
@@ -28,7 +29,7 @@ void DrawCross(Mat output_mat, Point2d pt, Scalar color = Scalar(0, 255, 0), int
 
 void DrawPoints(Mat &output_image,
                 const vector<Point2d> &points_coords,
-                char marker_type = 'o', int size = 7);
+                char marker_type, int size, const vector<PointStatistics> &pt_stats);
 
 Mat ImageFromMsg(const sensor_msgs::ImageConstPtr &msg);
 
@@ -59,5 +60,11 @@ Point2i ArgMin(Mat values);
 Mat CovarianceAlongLine(double x, double y, double z, double dispersion, double perp_dispersion);
 
 vector<Point2d> ToSparseVec(const vector<Point2d> &full_vec, const vector<bool> &is_included);
+
+bool isTriangular(const Mat &m, double eps = 0.00001);
+
+bool Triangulize(Mat *m, double eps = 0.00001);
+
+bool isSemiPositive(const Mat &m);
 
 #endif //MY_SLAM_MY_UTIL_H

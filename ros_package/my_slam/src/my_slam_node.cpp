@@ -90,23 +90,27 @@ Mat predict_Sigma_cam(const Mat &Sigma_cam,
   return F * Sigma_cam * F.t() + Q * Pn_noise_cov * Q.t();
 }
 
+void SigmaSetZeroWorldCameraCorr(Mat Sigma){
+  Mat WC = Sigma(Rect(0,N_VARS_FOR_CAMERA, N_VARS_FOR_CAMERA, Sigma.rows - N_VARS_FOR_CAMERA));
+  Mat CW = Sigma(Rect(N_VARS_FOR_CAMERA,0, Sigma.cols - N_VARS_FOR_CAMERA, N_VARS_FOR_CAMERA));
+  WC.setTo(Scalar(0));
+  CW.setTo(Scalar(0));
+}
+
 Mat predict_Sigma_full(const Mat &Sigma_full,
                        const StateMean &state,
                        double delta_time,
                        const Mat &Pn_noise_cov) {
+  assert(isSemiPositive(Sigma_full));
   Mat result = Sigma_full.clone();
   Mat Sigma_cam_area = result(Rect(0, 0, N_VARS_FOR_CAMERA, N_VARS_FOR_CAMERA));
   Mat Sigma_cam_pred = predict_Sigma_cam(Sigma_cam_area, state, delta_time, Pn_noise_cov);
-  Sigma_cam_pred.copyTo(Sigma_cam_area);
+  assert(isSemiPositive(Sigma_cam_area));
+  assert(isSemiPositive(Sigma_cam_pred));
+  Sigma_cam_pred.copyTo(Sigma_cam_area); //Todo: <-- this line breaks positive semi-definetness
+  SigmaSetZeroWorldCameraCorr(result);
+  assert(isSemiPositive(result));
   return result;
-}
-
-//3N+13 x 2N
-Mat Kalman_Gain(const Mat &H_t,
-                const StateMean &state,
-                const Mat &Pn_noise_cov,
-                const Mat &Sigma_predicted, const Mat &innovation_cov) {
-  return Sigma_predicted * H_t.t() * innovation_cov.inv();
 }
 
 class MY_SLAM {
@@ -131,6 +135,7 @@ class MY_SLAM {
   Mat innovation_cov;
 
   int frame_number = 0;
+  int points_uid_counter = 0;
 
   list <PartiallyInitializedPoint> partially_initialized_pts;
 //<editor-fold desc="descriptors">
@@ -143,6 +148,48 @@ class MY_SLAM {
        104, 205, 229, 107, 186, 246, 254, 144, 162, 244, 172, 125},
       {240, 173, 90, 245, 212, 200, 109, 231, 49, 39, 226, 26, 55, 35, 64, 17, 41, 159, 67, 136,
        122, 158, 128, 111, 253, 132, 150, 97, 33, 0, 230, 170}
+  };
+  unsigned char known_descriptors_array_ORB_HD2[4][32] = {
+      {245, 113, 253, 228, 230,  78, 253, 148, 169, 250,  50, 201,  95,  63, 221,  59, 166, 213, 125, 239, 201, 113, 189, 192, 247, 217, 237, 180, 101, 243, 210, 115},
+      {124, 169, 146,  40, 201, 157,  80, 194, 171, 149, 168,   9,  47, 139,  99, 146, 128, 187, 205,  80,  14,  43, 146, 177, 219, 209,   4, 123, 226,   7,  14,   2},
+      { 79, 238, 145, 227, 184, 166,  74, 158,  50, 187,  10, 192, 157,  67, 201, 218,  23,  93, 125, 222,  42,  84, 201,  50, 172, 196, 191, 244, 168, 211,   1,  33},
+      {101,  36, 221,  69, 152,  47,  74,  27, 114, 161, 174,  76, 211,  99,  65,  58,  23, 100, 104,  60,  25, 248, 221,  10, 237, 158,   5,  52, 232, 224,   2,  32}
+  };
+  unsigned char known_descriptors_array_ORB_VERT2[4][32] = {
+      { 76,  54, 189, 111, 168, 111, 117,  25, 106, 174,  47, 108, 215, 119,  73,  58, 149,  84, 108,  40, 145,  96, 251,  26, 237, 255, 101, 124, 192, 226, 199, 115},
+      { 88, 177, 150, 248,  25, 204,  16,   7, 174, 153, 160,   8, 174, 243,  64, 146, 128,  55, 232,  16,  18,  75, 146,  81, 153, 176,  18, 123, 194,   2, 135,  43},
+      { 64, 209, 159, 181, 136,  76,  37, 151, 166, 189,  10,  81, 215, 183,  72,  74, 133,  87, 105,  80,  26, 201,  83,  32, 233, 163, 126,  84, 128,  16, 133,  43},
+      {208, 132,  31, 249, 138, 226,  65, 155, 164,  19, 195,  16, 215,  19,  40, 105,  99,  19, 108, 138, 123, 141,  19,  85, 193, 163, 122,  68,  48,   0, 161,  34}
+  };
+  unsigned char known_descriptors_array_ORB_VERT3[4][32] = {
+      { 96, 182, 189, 119, 184, 111, 119, 191, 107, 175,  46, 108, 247, 119,  64,  50, 149,  86, 108,  40, 145, 120, 251,  31, 239, 255, 117,  52, 192, 242, 198, 123},
+      { 80, 112,  30, 173,  40,  78,  85,  52, 164, 158, 162,   1, 215,  19,   1,  82, 160, 245, 109,  98,  72, 133, 211,   8, 209, 163, 106,  17,  32,  50,  39,  11},
+      {220, 133, 156, 180, 138,  74,  20, 171, 164, 150, 130,  17, 247,  97,  11,  75, 129, 215, 236,  35, 104,  69,  11,  14, 233, 227, 109,  21, 160, 112,  13,  74},
+      {216, 148,  31, 255,  42, 224,  25,  63, 180,  27, 195, 112, 253, 115,  40, 123, 103,  19, 108, 128,  41, 133,   3,  85, 193, 227, 122,  16,  48,   0,  37,  43}
+  };
+  unsigned char known_descriptors_array_ORB_R1[4][32] = {
+      {204, 180, 189, 247, 168,  46, 127, 158,  62, 255,  39,  20, 223,  55,  65,  91,  23, 215, 125,  62, 161, 212, 249,  42, 205, 251, 119,  84, 136, 243,   7, 113},
+      { 80, 120, 159, 237,  40,  78,  85,  48, 164, 174, 162,  32, 247, 147,   1,  82,  34, 245, 108,  98,  72, 133, 147,   8, 209, 231,  98,  17,  32, 179,   7,  43},
+      {225,  48, 157,  53, 140,  45, 176,  26, 250, 243, 160,  93, 182, 184,  81,  59, 137,  71, 122,   5, 181, 110, 211,  16, 205, 155,  81,  56, 200, 105,  83, 154},
+      {229, 253, 152,  71, 145,  30,  70, 184, 123, 160,  47,  72, 210, 114, 205, 182, 145,  78,  72, 122, 245, 240, 249,  42,  47, 223,   5,  52,  74, 115, 202,  36}
+  };
+  unsigned char known_descriptors_array_ORB_RAIL2[4][32] = {
+      {205, 104, 189, 231,  40,  76, 111, 148,  38, 243, 167,   8, 215,  23,  73, 122,   1, 212, 121,  94,  75,  84, 249,  32, 237, 249,   7,  52, 128, 179, 198, 112},
+      { 88,  88, 158, 164,  40, 108,  81,  16, 164,  30, 162,  41, 215,  23,   1,  90, 166, 245, 108,  66,  72,  65, 211,   0, 209, 227,  98,  17,  32, 113,  47,  19},
+      {229, 240, 141,  39,  44,  47, 195, 152, 106, 250,  33,  93, 215, 105,  88,  27, 145,  68, 109, 111, 137, 100, 217,  16, 205, 219,  97, 116, 200, 123,  67,   0},
+      { 94, 177, 186,  34, 153,  29,  83, 105, 171,  29, 173,  25, 206, 248,  78,  18, 181,  67, 249,  51,  22,  99, 155,  65, 219, 253,   1, 127, 202,   7, 143,   7}
+  };
+  unsigned char known_descriptors_array_ORB_RR[4][32] = {
+      {204, 180, 189, 247, 168,  46, 125, 153,  58, 247,  39,  28, 215, 103,  73,  91,  23, 214, 125,  62, 177, 212, 249,   2, 205, 251, 117,  84, 128, 225, 135, 112},
+      { 84, 112, 158, 173,  40,  76,  85,  16, 164,  30, 171,   1, 215, 147,   9,  90, 162, 149, 109,   2,  72,  69, 211,   0, 209, 225, 122,  21,  32, 114,  39,   3},
+      {201,  88,  92, 164,  43,  26,  92, 180,  33, 242,   6, 172, 223,  19, 131, 251,   6, 213, 252, 110, 237,  68, 215, 168, 198, 235,  96, 132,  46, 181,  11,  25},
+      { 90, 188, 140, 183, 138,  36,  28, 175, 190, 223, 130, 149, 237, 239,  74,  91, 231, 231, 253, 149,  56,  77, 155, 227, 248, 227, 255, 217, 168, 116, 169,  91}
+  };
+  unsigned char known_descriptors_array_ORB_RAND[4][32] = {
+      { 96, 181, 185, 103, 248, 111,  99, 189,  43, 253, 111,   8, 247, 247,  72,  50, 149,  94, 104,   8, 147, 112, 251,  51, 205, 191,   5, 116, 192, 226, 199, 248},
+      {120, 181, 123, 232,  17, 197,  83,  86,  97,   1, 236,   8,  63, 151, 104,  48, 152, 187,  21,  64,  90,  43, 176,  51, 243, 205,  32, 123, 114,   2, 230,  42},
+      { 72, 171, 147, 183, 168, 200,  36,  39, 170,   9, 138, 112, 255, 183,   0,  82, 130, 119, 108,   1,  16, 201, 131,  33, 237, 245, 124,  80, 128,   0, 135,  10},
+      {164,  96,  27, 170, 152, 169,  35, 192, 172,   0, 224,  72, 151, 211,  41,  88, 216,   8,  74, 114,  10,  39,  82,  16, 241, 128,  34,  56, 208,  27,   3, 130}
   };
 
   Mat known_ORB_descriptors = Mat(4, 32, CV_8UC1, &known_descriptors_array_ORB_HD).clone();
@@ -161,21 +208,25 @@ class MY_SLAM {
   const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array).clone();
 
   bool IsStateCorrect() {
+    if(!isSemiPositive(Sigma_state_cov)){
+      cout<<"Sigma is not semi-positive: "<<Sigma_state_cov<<endl;
+      return false;
+    }
     if (isnan(x_state_mean.position_w.x) ||
         isnan(x_state_mean.position_w.y) ||
         isnan(x_state_mean.position_w.z)) {
-      cout << "Lost location" << endl;
+      cout << "NAN in location" << endl;
       return false;
     }
 
     if (abs(norm(x_state_mean.direction_wr) - 1) > 0.5) {
-      cout << "Lost direction" << endl;
+      cout << "Direction quaternion module is not 1" << endl;
       cout << x_state_mean.direction_wr << endl;
       cout << norm(x_state_mean.direction_wr) << endl;
       return false;
     }
 
-    if (norm(x_state_mean.position_w) > 500) {
+    if (norm(x_state_mean.position_w) > 1000) {
       cout << "Position is too far" << endl;
       cout << x_state_mean.position_w << endl;
       cout << norm(x_state_mean.position_w) << endl;
@@ -370,6 +421,7 @@ class MY_SLAM {
          it_pt != partially_initialized_pts.end();) {
       auto &&pt = *it_pt;
       bool remove_this_point = false;
+      assert(fabs(sum(pt.prob_distribution)[0] - 1.0) < 1e-2);
       Point2d origin_2d = ProjectPoint(pt.position,
                                        x_state_mean.position_w,
                                        x_state_mean.direction_wr,
@@ -378,7 +430,7 @@ class MY_SLAM {
               pt.ray_direction,
               pt.dist_resolution,
               pt.N_prob_segments,
-              hashcolor(i_pt + known_ORB_descriptors.rows));
+              hashcolor(i_pt + points_uid_counter));
       DrawCross(output_mat, origin_2d, Scalar(0, 255, 255), 5);
 
 //      Mat distances = L2DistanceMat(image,pt.image);
@@ -396,12 +448,14 @@ class MY_SLAM {
                          camera_intrinsic);
 //        Scalar color = hashcolor(i_pt,2);
         Mat dh_over_dx = Dh_pt_over_dx_cam(x_state_mean, camera_intrinsic, pos3d); // 2 x 7
+        static_assert(N_VARS_FOR_CAMERA == 13, "change 7 here VV");
         Mat sigma_cam = Sigma_state_cov(Rect(0, 0, 7, 7));
         Mat dh_over_dz = Dh_pt_over_dz(x_state_mean, camera_intrinsic, pos3d); //2 x 3
         Mat pixel_noise_cov = Mat::eye(2, 2, CV_64F) * pixel_noise;
         Mat sigma =
             dh_over_dx * sigma_cam * dh_over_dx.t() + dh_over_dz * pt.sigma3d * dh_over_dz.t()
                 + pixel_noise_cov;
+        assert(isSemiPositive(pt.sigma3d));
         double probability_threshold = 1.5; // sigmas
         double search_height = sigma.at<double>(0, 0) * probability_threshold;
         double search_width = sigma.at<double>(1, 1) * probability_threshold;
@@ -416,7 +470,6 @@ class MY_SLAM {
         int argmin_y_to = argmin_y_from + search_height;
         if (argmin_x_from >= distances.cols || argmin_y_from >= distances.rows || argmin_x_to <= 0
             || argmin_y_to <= 0) {
-//          pt.prob_distribution[i_segment] = 0; //TODO: think and correct
           is_updated[i_segment] = false;
           continue;
         }
@@ -445,13 +498,15 @@ class MY_SLAM {
         Point2i best_match_pt = minLoc + Point2i(argmin_region.x, argmin_region.y)
             + Point2i(pt.image_patch.cols / 2, pt.image_patch.rows / 2);
         obstacles_for_new_points.push_back(best_match_pt);
-        DrawCross(output_mat, best_match_pt, hashcolor(i_pt));
+        DrawCross(output_mat, best_match_pt, hashcolor(i_pt + points_uid_counter));
         Vec2d best_match_vec;
         best_match_vec[0] = best_match_pt.x;
         best_match_vec[1] = best_match_pt.y;
         double old_prob = pt.prob_distribution[i_segment];
+        assert(old_prob == old_prob);
 //        Todo: take image diffirence norm into account
         double new_probability = old_prob * NormalPdf2d(sigma, coord_2d, best_match_vec);
+        assert(new_probability == new_probability);
         pt.prob_distribution[i_segment] = new_probability;
       }
 //      normalize(&pt.prob_distribution, sum(pt.prob_distribution)[0]);
@@ -459,6 +514,7 @@ class MY_SLAM {
       //Normalization
       double remaining_prob = 1;
       double sum_of_updated = 0;
+
       for(int i_seg = 0; i_seg < pt.N_prob_segments; ++i_seg){
         if(!is_updated[i_seg]){
           remaining_prob -= pt.prob_distribution[i_seg];
@@ -466,11 +522,12 @@ class MY_SLAM {
           sum_of_updated += pt.prob_distribution[i_seg];
         }
       }
-      assert(remaining_prob >= 0);
-      assert(sum_of_updated <= 1);
+      assert(remaining_prob >= -0.001);
       for(int i_seg = 0; i_seg < pt.N_prob_segments; ++i_seg){
         if(is_updated[i_seg]){
-          pt.prob_distribution[i_seg] *= remaining_prob / sum_of_updated;
+          if(pt.prob_distribution[i_seg] != 0){
+            pt.prob_distribution[i_seg] *= remaining_prob / sum_of_updated;
+          }
         }
       }
 
@@ -489,35 +546,42 @@ class MY_SLAM {
     ConvertToFullyInitialized();
   }
 
-  void subscription_callback(const sensor_msgs::ImageConstPtr &msg_in) {
+  void process_frame(const Mat &new_frame, int delta_frames ,int call_counter){
     assert(known_ORB_descriptors.rows == x_state_mean.feature_positions_w.size());
     assert(pt_statistics.size() == x_state_mean.feature_positions_w.size());
-    static int call_counter = 0;
-    int msg_number = std::stoi(msg_in->header.frame_id);
-    frame_number++;
-    call_counter++;
-    int delta_frames = 1;
-    if (frame_number != msg_number) {
-      cout << "FRAMES MISSED" << endl;
-      delta_frames = 1 + msg_number - frame_number;
-      frame_number = msg_number;
+    if (!IsStateCorrect()) {
+      cout<<"STATE INCORRECT"<<endl;
+      assert(false);
     }
 
-    current_frame = ImageFromMsg(msg_in);
+    current_frame = new_frame.clone();
     output_mat = current_frame.clone();
     trajectory.push_back(x_state_mean.position_w);
     obstacles_for_new_points.resize(0);
 
+    assert(isSemiPositive(Sigma_state_cov));
     EKF_iteration(current_frame, delta_frames);
+    SigmaSetZeroWorldCameraCorr(Sigma_state_cov);
+    assert(isSemiPositive(Sigma_state_cov));
+    assert(Triangulize(&Sigma_state_cov));
+    assert(isSemiPositive(Sigma_state_cov));
     UpdatePartiallyInitializedFeaturs(current_frame);
-    if(call_counter % 5 == 0) {
+    assert(isSemiPositive(Sigma_state_cov));
+    assert(Triangulize(&Sigma_state_cov));
+    if(call_counter % frames_per_new_point == 0) {
       DetectNewFeatures2(current_frame);
     }
     if(call_counter % 20 == 0 && call_counter > 40) {
 //      RemoveBadPoints();
     }
-    RemoveBadPoints2();
+    if(call_counter > 35) {
+      RemoveBadPoints2();
+    }
 
+
+    static double ox_dist_sq_sum = 0;
+    ox_dist_sq_sum += pow(x_state_mean.position_w.y,2) + pow(x_state_mean.position_w.z,2);
+    dbg<<"sq_dist: "<<ox_dist_sq_sum / call_counter<<endl;
 
     //Publish
     PublishAll();
@@ -529,12 +593,26 @@ class MY_SLAM {
     dbg << "Frame: " << frame_number << " call: " << call_counter << endl;
 
     //Termination
-    if (!IsStateCorrect()) {
-      ros::shutdown();
-    }
+
     if (cv::waitKey(1) == 27) {
       ros::shutdown();
     }
+  }
+
+  void subscription_callback(const sensor_msgs::ImageConstPtr &msg_in) {
+    static int call_counter = 0;
+    int msg_number = std::stoi(msg_in->header.frame_id);
+    frame_number++;
+    call_counter++;
+    int delta_frames = 1;
+    if (frame_number != msg_number) {
+      cout << "FRAMES MISSED" << endl;
+      delta_frames = 1 + msg_number - frame_number;
+      frame_number = msg_number;
+    }
+
+    Mat new_frame = ImageFromMsg(msg_in);
+    process_frame(new_frame, delta_frames,call_counter);
   }
 
   Mat MatWithoutRow(const Mat & matIn, int row){
@@ -608,7 +686,7 @@ class MY_SLAM {
       if(pt_statistics[i_pt].n_observations > 3) {
         if (
 //            norm(pt_statistics[i_pt].initial_position - x_state_mean.feature_positions_w[i_pt]) > 30 ||
-            pt_statistics[i_pt].traveled_distance > mean_traveled_distance * 2.6 ||
+//            pt_statistics[i_pt].traveled_distance > mean_traveled_distance * 2.6 ||
             pt_statistics[i_pt].mean_squared_detector_distance() > mean_mean_sq_distance * 2.3
             ) {
           RemovePoint(i_pt);
@@ -679,10 +757,13 @@ class MY_SLAM {
     stats.sum_squared_reproj_distance = 0;
     stats.traveled_distance = 0;
     stats.initial_position = pt_pos;
+    stats.uid = points_uid_counter++;
     pt_statistics.push_back(stats);
     Mat new_Sigma(Sigma_state_cov.rows + 3, Sigma_state_cov.cols + 3, CV_64F, double(0));
     Sigma_state_cov.copyTo(new_Sigma(Rect(0, 0, Sigma_state_cov.cols, Sigma_state_cov.rows)));
+    assert(isSemiPositive(pt.sigma3d));
     pt.sigma3d.copyTo(new_Sigma(Rect(Sigma_state_cov.cols, Sigma_state_cov.rows, 3, 3)));
+    assert(isSemiPositive(new_Sigma));
     Sigma_state_cov = new_Sigma.clone();
   }
 
@@ -692,7 +773,7 @@ class MY_SLAM {
     msg_out.header.frame_id = "map";
     msg_out.height = msg_out.width = 200;
     msg_out.header.stamp = ++stamp;
-    StateToMsg(x_state_mean, trajectory, &msg_out);
+    StateToMsg(x_state_mean, trajectory, &msg_out, pt_statistics);
     pub.publish(msg_out);
   }
 
@@ -722,7 +803,7 @@ class MY_SLAM {
           predicted_points[i_pt].x <= 15 ||
           predicted_points[i_pt].y <= 15 ||
           predicted_points[i_pt].x >= current_frame.cols - 15 ||
-          predicted_points[i_pt].y <= current_frame.rows - 15
+          predicted_points[i_pt].y >= current_frame.rows - 15
           ){
         should_be_found[i_pt] = false;
       }
@@ -735,9 +816,9 @@ class MY_SLAM {
                                                                 search_radius,
                                                                 NORM_HAMMING,
                                                                 &is_found);
-    DrawPoints(output_mat, observations);
-    DrawPoints(output_mat, predicted_points, 'x', 5);
-    DrawPoints(output_mat, predicted_points, 'c', search_radius);
+    DrawPoints(output_mat, observations, 'o', 5, pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'x', 5,pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'c', search_radius,pt_statistics);
     assert(is_found.size() == x_state_mean.feature_positions_w.size());
     for (int i_pt = 0; i_pt < is_found.size(); ++i_pt) {
       if (is_found[i_pt]) {
@@ -791,8 +872,7 @@ class MY_SLAM {
     //yes, x_pred
     Mat H_t = H_t_Jacobian_of_observations(x_state_mean_pred, camera_intrinsic);
     innovation_cov = S_t_innovation_cov(H_t, Sigma_state_cov_pred, pixel_noise);
-    Mat KalmanGain =
-        Kalman_Gain(H_t, x_state_mean_pred, Pn_noise_cov, Sigma_state_cov_pred, innovation_cov);
+    Mat KalmanGain =Sigma_state_cov_pred * H_t.t() * innovation_cov.inv();
     Mat stateMat_pred = state2mat(x_state_mean_pred);
     StateMean x_state_mean_new = StateMean(stateMat_pred + KalmanGain * observations_diff);
 
@@ -800,10 +880,12 @@ class MY_SLAM {
     x_state_mean_new.direction_wr =
         x_state_mean_new.direction_wr / norm(x_state_mean_new.direction_wr);
 
+    assert(isSemiPositive(Sigma_state_cov_pred));
     Mat Sigma_state_cov_new = (
         Mat::eye(Sigma_state_cov.rows, Sigma_state_cov.cols, CV_64F) - KalmanGain * H_t)
         * Sigma_state_cov_pred;
-
+    SigmaSetZeroWorldCameraCorr(Sigma_state_cov_new);
+    assert(isSemiPositive(Sigma_state_cov_new));
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
       pt_statistics[i_pt].traveled_distance +=
           norm(x_state_mean.feature_positions_w[i_pt] - x_state_mean_new.feature_positions_w[i_pt]);
@@ -819,7 +901,7 @@ class MY_SLAM {
           norm(reprojected_points[i_pt] - observations[i_pt]);
     }
 
-    DrawPoints(output_mat, reprojected_points, '+', 5);
+    DrawPoints(output_mat, reprojected_points, '+', 5, pt_statistics);
 
     dbg << endl;
     dbg << "repr, obs size:" << endl;
@@ -830,6 +912,7 @@ class MY_SLAM {
   }
 
   void EKF_iteration_with_sparse(Mat input_image, double delta_time) {
+    //Todo: redo like here: https://robotics.stackexchange.com/questions/2000/maintaining-positive-definite-property-for-covariance-in-an-unscented-kalman-fil
     dbg << "state:" << endl << x_state_mean << endl;
 //    dbg << "Sigma:" << endl << Sigma_state_cov << endl;
 //Predict
@@ -840,6 +923,7 @@ class MY_SLAM {
     //yes, x_s_m
     Mat Sigma_state_cov_pred =
         predict_Sigma_full(Sigma_state_cov, x_state_mean, delta_time, Pn_noise_cov);
+    assert(isSemiPositive(Sigma_state_cov_pred));
 //Measure
     //Todo: make like in MonoSLAM, instead of ORB
     std::vector<KeyPoint> key_points;
@@ -855,7 +939,7 @@ class MY_SLAM {
           predicted_points[i_pt].x <= 15 ||
               predicted_points[i_pt].y <= 15 ||
               predicted_points[i_pt].x >= current_frame.cols - 15 ||
-              predicted_points[i_pt].y <= current_frame.rows - 15
+              predicted_points[i_pt].y >= current_frame.rows - 15
           ){
         should_be_found[i_pt] = false;
       }
@@ -868,9 +952,9 @@ class MY_SLAM {
                                                                 search_radius,
                                                                 NORM_HAMMING,
                                                                 &is_found);
-    DrawPoints(output_mat, observations);
-    DrawPoints(output_mat, predicted_points, 'x', 5);
-    DrawPoints(output_mat, predicted_points, 'c', search_radius);
+    DrawPoints(output_mat, observations, 'o', 7, pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'x', 5,pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'c', search_radius,pt_statistics);
     assert(is_found.size() == x_state_mean.feature_positions_w.size());
     for (int i_pt = 0; i_pt < is_found.size(); ++i_pt) {
       if (is_found[i_pt]) {
@@ -936,12 +1020,7 @@ class MY_SLAM {
     //yes, x_pred
     Mat H_t = H_t_Jacobian_of_observations(sparse_x_state_mean_pred, camera_intrinsic);
     innovation_cov = S_t_innovation_cov(H_t, sparse_Sigma_state_cov_pred, pixel_noise);
-    Mat KalmanGain =
-        Kalman_Gain(H_t,
-                    sparse_x_state_mean_pred,
-                    Pn_noise_cov,
-                    sparse_Sigma_state_cov_pred,
-                    innovation_cov);
+    Mat KalmanGain = sparse_Sigma_state_cov_pred * H_t.t() * innovation_cov.inv();
     Mat sparse_stateMat_pred = state2mat(sparse_x_state_mean_pred);
     StateMean
         sparse_x_state_mean_new = StateMean(sparse_stateMat_pred + KalmanGain * observations_diff);
@@ -954,11 +1033,14 @@ class MY_SLAM {
         Mat::eye(sparse_Sigma_state_cov.rows, sparse_Sigma_state_cov.cols, CV_64F)
             - KalmanGain * H_t)
         * sparse_Sigma_state_cov_pred;
-
+    SigmaSetZeroWorldCameraCorr(sparse_Sigma_state_cov_new);
     StateMean x_state_mean_new =
         UpdateFromSparseState(x_state_mean_pred, sparse_x_state_mean_new, is_found);
+    assert(isSemiPositive(sparse_Sigma_state_cov_new));
+    assert(isSemiPositive(Sigma_state_cov_pred));
     Mat Sigma_state_cov_new =
-        UpdateFromSparse(Sigma_state_cov_pred, sparse_Sigma_state_cov_new, is_colrow_included);
+        UpdateFromSparse(Sigma_state_cov_pred, sparse_Sigma_state_cov_new, is_colrow_included); //Todo: this line breaks semi-positivity
+    assert(isSemiPositive(Sigma_state_cov_new));
 
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
       pt_statistics[i_pt].traveled_distance +=
@@ -975,7 +1057,7 @@ class MY_SLAM {
       pt_statistics[i_pt].sum_squared_reproj_distance +=
           norm(reprojected_points[i_pt] - observations[i_pt]);
     }
-    DrawPoints(output_mat, reprojected_points, '+', 5);
+    DrawPoints(output_mat, reprojected_points, '+', 5, pt_statistics);
 
     dbg << endl;
     dbg << "repr, obs size:" << endl;
@@ -985,23 +1067,27 @@ class MY_SLAM {
 //    dbg<<"Reprojection error: "<<norm(reprojected_points, observations)<<endl;
   }
  public:
-//  Predict diff:  31.6471
-//  constexpr static const double pixel_noise = 4.5;
-//  constexpr static const double position_speed_noise = 0.00035;
-//  constexpr static const double angular_speed_noise = 0.0001;
-//  constexpr static const double initial_map_uncertainty = 0;
-//  constexpr static const double initial_pos_uncertainty = 45;
-//  constexpr static const double initial_direction_uncertainty = 10;
-//  initial_angular_velocity = 2*pi;
+//  sq_dist: 23.2719
+//  constexpr static const double pixel_noise = 7;
+//  constexpr static const double position_speed_noise = 2;
+//  constexpr static const double angular_speed_noise = 0.2;
+//  constexpr static const double initial_map_uncertainty = 2;
+//  constexpr static const double initial_pos_uncertainty = 2;
+//  constexpr static const double initial_direction_uncertainty = 0.2;
+//  constexpr static const double initial_speed_uncertainty = 0.01;
+//  constexpr static const double initial_angular_speed_uncertainty = 0.1;
+//  double points_init_prob_threshold = 0.45;
+//  int frames_per_new_point = 5;
   constexpr static const double pixel_noise = 11;
-  constexpr static const double position_speed_noise = 1;
-  constexpr static const double angular_speed_noise = 0.1;
+  constexpr static const double position_speed_noise = 2;
+  constexpr static const double angular_speed_noise = 0.5;
   constexpr static const double initial_map_uncertainty = 2;
   constexpr static const double initial_pos_uncertainty = 2;
-  constexpr static const double initial_direction_uncertainty = 0.5;
-  constexpr static const double initial_speed_uncertainty = 0.0001;
+  constexpr static const double initial_direction_uncertainty = 0.2;
+  constexpr static const double initial_speed_uncertainty = 0.01;
   constexpr static const double initial_angular_speed_uncertainty = 0.1;
   double points_init_prob_threshold = 0.45;
+  int frames_per_new_point = 5;
   MY_SLAM()
       : it_(nh_) {
     // Subscrive to input video feed and publish output video feed
@@ -1024,16 +1110,12 @@ class MY_SLAM {
     Sigma_state_cov.at<double>(11, 11) = initial_angular_speed_uncertainty;
     Sigma_state_cov.at<double>(12, 12) = initial_angular_speed_uncertainty;
 
-//    Sigma_state_cov.at<double>(22, 22) = 1000; //todo:remove
-//    Sigma_state_cov.at<double>(23, 23) = 1000;
-//    Sigma_state_cov.at<double>(24, 24) = 1000;
     Pn_noise_cov = position_speed_noise * Mat::eye(6, 6, CV_64F); //todo: init properly
     Pn_noise_cov.at<double>(3, 3) = angular_speed_noise;
     Pn_noise_cov.at<double>(4, 4) = angular_speed_noise;
     Pn_noise_cov.at<double>(5, 5) = angular_speed_noise;
-    //Todo: fix no-rotation == 2Pi. Really it only works if delta_time = 1
     x_state_mean.angular_velocity_r =
-        Point3d(2 * pi * 0.000000000001,
+        Point3d(0.000000000001,
                 0,
                 0);// no rotation, 2*pi needed to eliminate indeterminance
     x_state_mean.direction_wr = Quaternion(1, 0, 0, 0.0); // Zero rotation
@@ -1069,9 +1151,10 @@ class MY_SLAM {
     pt_statistics.resize(4, stat0);
     for(int i = 0; i < 4; i++) {
       pt_statistics[i].initial_position = x_state_mean.feature_positions_w[i];
+      pt_statistics[i].uid = points_uid_counter++;
     }
 
-    int nfeatures = 1000;
+    int nfeatures = 5000;
     float scaleFactor = 1.2f;
     int nlevels = 8;
     int edgeThreshold = 15; // Changed default (31);

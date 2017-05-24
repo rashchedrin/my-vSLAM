@@ -109,7 +109,7 @@ double norm(const Quaternion &q) {
   return sqrt(q.w() * q.w() + q.i() * q.i() + q.j() * q.j() + q.k() * q.k());
 }
 
-void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *points3D) {
+void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *points3D, const vector<PointStatistics> &pt_stats) {
   pcl::PointXYZRGB camera_pt(255, 255, 255);
   camera_pt.x = s.position_w.x;
   camera_pt.y = s.position_w.z;
@@ -119,7 +119,7 @@ void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *poin
   for (int i_traj_pt = 0; i_traj_pt < trajectory.size(); ++i_traj_pt) {
 //    Scalar pt_color = hashcolor(i_traj_pt,1);
     double brightness = 1.0 * i_traj_pt / trajectory.size() * 255.0;
-    pcl::PointXYZRGB point3d(brightness, brightness * 0.8 + 0.2 * 255, brightness);
+    pcl::PointXYZRGB point3d(brightness, brightness, brightness * 0.8 + 0.2 * 255);
     point3d.x = trajectory[i_traj_pt].x;
     point3d.y = trajectory[i_traj_pt].z;
     point3d.z = -trajectory[i_traj_pt].y;
@@ -127,7 +127,7 @@ void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *poin
   }
 
   for (int i_map_pt = 0; i_map_pt < s.feature_positions_w.size(); ++i_map_pt) {
-    Scalar pt_color = hashcolor(i_map_pt);
+    Scalar pt_color = hashcolor(pt_stats[i_map_pt].uid);
     pcl::PointXYZRGB point3d(pt_color[2], pt_color[1], pt_color[0]);
     point3d.x = s.feature_positions_w[i_map_pt].x;
     point3d.y = s.feature_positions_w[i_map_pt].z;

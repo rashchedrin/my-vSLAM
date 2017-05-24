@@ -94,9 +94,9 @@ void DrawPlus(Mat output_mat, Point2d pt, Scalar color, int size) {
 
 void DrawPoints(Mat &output_image,
                 const vector<Point2d> &points_coords,
-                char marker_type, int size) {
+                char marker_type, int size, const vector<PointStatistics> &pt_stats) {
   for (int i_obs = 0; i_obs < points_coords.size(); ++i_obs) {
-    Scalar color = hashcolor(i_obs);
+    Scalar color = hashcolor(pt_stats[i_obs].uid);
     if (marker_type == 'o') {
       circle(output_image, points_coords[i_obs], 4, color, 7);
     }
@@ -176,6 +176,8 @@ double limitPi(double a) {
 }
 
 double NormalPdf2d(const Mat &sigma, Vec2d mean, Vec2d x) {
+  assert(determinant(sigma) >= 0);
+
   //Todo: test
   Mat xMinusMu(x - mean);
   Mat expParameter = -1 / 2.0 * xMinusMu.t() * sigma.inv() * xMinusMu;
@@ -252,6 +254,7 @@ Mat CovarianceAlongLine(double x, double y, double z, double dispersion, double 
   Mat sigma(3, 3, CV_64F, &sigma_array);
   Mat R = RotationMatXtoXYZ(x, y, z);
   Mat res = R * sigma * R.t();
+  assert(determinant(res)>0);
   return res.clone();
 }
 
@@ -269,4 +272,48 @@ vector<Point2d> ToSparseVec(const vector<Point2d> &full_vec, const vector<bool> 
     }
   }
   return sparse_vec;
+}
+
+
+bool isTriangular(const Mat &m, double eps){
+  if(m.rows != m.cols){
+    return false;
+  }
+  assert(m.type() == CV_64F);
+  for(int row = 0; row < m.rows; ++row){
+    for (int col = row + 1; col < m.cols; ++col) {
+      if(fabs(m.at<double>(row, col) - m.at<double>(col,row)) > eps){
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+
+bool Triangulize(Mat *m, double eps){
+  assert(m->rows == m->cols);
+  assert(m->type() == CV_64F);
+  bool was_triangular = true;
+  for(int row = 0; row < m->rows; ++row){
+    for (int col = row + 1; col < m->cols; ++col) {
+      if(fabs(m->at<double>(row, col) - m->at<double>(col,row)) > eps){
+        was_triangular = false;
+      }
+      m->at<double>(row, col) = (m->at<double>(row, col) + m->at<double>(col, row))/2;
+    }
+  }
+  return was_triangular;
+}
+
+bool isSemiPositive(const Mat &m){
+  assert(isTriangular(m));
+  Mat eigVals;
+  eigen(m, eigVals);
+  for (int i = 0; i < eigVals.rows; ++i) {
+    if(eigVals.at<double>(0,i) < 0){
+      return false;
+    }
+  }
+  return true;
 }

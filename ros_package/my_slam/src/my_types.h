@@ -110,9 +110,24 @@ struct StateMean {
   friend ostream &operator<<(ostream &os, const StateMean &stateMean);
 };
 
+struct PointStatistics{
+  double traveled_distance;
+  double sum_squared_reproj_distance;
+  int first_frame;
+  int n_observations;
+  int expected_observations;
+  int uid;
+  Point3d initial_position;
+
+  double mean_squared_detector_distance(){
+    return sum_squared_reproj_distance / n_observations;
+  }
+
+};
+
 Mat state2mat(StateMean s);
 
-void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *points3D);
+void StateToMsg(const StateMean &s, vector<Point3d> trajectory, PointCloud *points3D, const vector<PointStatistics> &pt_stats);
 
 struct PartiallyInitializedPoint {
   static constexpr const int min_distance = 0; //cm
@@ -154,17 +169,6 @@ StateMean UpdateFromSparseState(const StateMean &old_state,
                                 const StateMean &new_sparse_state,
                                 const vector<bool> &is_included);
 
-struct PointStatistics{
-  double traveled_distance;
-  double sum_squared_reproj_distance;
-  int first_frame;
-  int n_observations;
-  int expected_observations;
-  Point3d initial_position;
 
-  double mean_squared_detector_distance(){
-    return sum_squared_reproj_distance / n_observations;
-  }
-};
 
 #endif //MY_SLAM_MY_TYPES_H
