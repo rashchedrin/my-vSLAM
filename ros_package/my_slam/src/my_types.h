@@ -113,15 +113,40 @@ struct StateMean {
 struct PointStatistics{
   double traveled_distance;
   double sum_squared_reproj_distance;
+  double exp_mean_squared_reproj_distance;
+  double exp_mean_unsimilarity;
+  constexpr static const double repr_exponent = 0.2;
+  constexpr static const double unsim_exponent = 0.25;
   int first_frame;
   int n_observations;
   int expected_observations;
   int uid;
   Point3d initial_position;
 
+  PointStatistics(){
+    exp_mean_unsimilarity = 0;
+    traveled_distance = 0;
+    sum_squared_reproj_distance = 0;
+    exp_mean_squared_reproj_distance = 0;
+    n_observations = 0;
+    expected_observations = 0;
+  }
   double mean_squared_detector_distance(){
     return sum_squared_reproj_distance / n_observations;
   }
+
+  void update_mean_squared_reproj_distance(double measured_dist){
+    double measured_dist_sq = measured_dist *measured_dist;
+    exp_mean_squared_reproj_distance = exp_mean_squared_reproj_distance * (1 - repr_exponent) + repr_exponent * measured_dist_sq;
+    sum_squared_reproj_distance += measured_dist_sq;
+    n_observations++;
+  }
+
+  void update_exp_mean_unsimilarity(double measured_unsim){
+    exp_mean_unsimilarity = exp_mean_unsimilarity * (1 - unsim_exponent) + unsim_exponent * measured_unsim;
+  }
+
+
 
 };
 

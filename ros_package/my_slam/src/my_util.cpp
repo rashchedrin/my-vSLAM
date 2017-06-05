@@ -130,12 +130,13 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const vector<Point2d> &expected_positions,
                                              int search_radius,
                                              const NormTypes &norm_type,
-                                             vector<bool> *isFound) {
+                                             vector<bool> *isFound,
+                                             vector<double> *descr_unsimilarity) {
   vector<Point2d> coordinates_vec;
   isFound->resize(known_descriptors.rows);
+  descr_unsimilarity->resize(known_descriptors.rows);
   for (int i_known_kp = 0; i_known_kp < known_descriptors.rows; ++i_known_kp) {
-    double min_descr_distance =
-        norm(known_descriptors.row(i_known_kp), kp_descriptors.row(0), norm_type);
+    double min_descr_distance =std::numeric_limits<double>::infinity();
     int closest_id = -1;
     for (int i_kp = 0; i_kp < key_points.size(); ++i_kp) {
       double pixel_distance = norm(expected_positions[i_known_kp] - Point2d(key_points[i_kp].pt));
@@ -152,8 +153,10 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
     if(closest_id == -1){
       (*isFound)[i_known_kp] = false;
       coordinates_vec.push_back(expected_positions[i_known_kp]); //Todo: think and fix
+      (*descr_unsimilarity)[i_known_kp] =32*8/2;
     }else{
       (*isFound)[i_known_kp] = true;
+      (*descr_unsimilarity)[i_known_kp] =min_descr_distance;
       coordinates_vec.push_back(key_points[closest_id].pt);
     }
   }
@@ -307,6 +310,7 @@ bool Triangulize(Mat *m, double eps){
 }
 
 bool isSemiPositive(const Mat &m){
+  return true;
   assert(isTriangular(m));
   Mat eigVals;
   eigen(m, eigVals);

@@ -14,10 +14,10 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
 )
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS "-g -O0")
+set(CMAKE_CXX_FLAGS "-g -O2")
 #set(CMAKE_CXX_FLAGS -fsanitize=address,undefined)
 
-set(SOURCE_FILES src/my_slam_node.cpp src/jacobians.cpp src/my_types.cpp src/my_util.cpp src/jacobians.h src/my_types.h src/my_util.h src/my_geometry.cpp src/my_geometry.h)
+set(SOURCE_FILES src/my_slam_node.cpp src/jacobians.cpp src/my_types.cpp src/my_util.cpp src/jacobians.h src/my_types.h src/my_util.h src/my_geometry.cpp src/my_geometry.h src/triangulation.cpp src/triangulation.h)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)

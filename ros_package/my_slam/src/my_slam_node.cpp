@@ -124,6 +124,7 @@ class MY_SLAM {
   StateMean x_state_mean;
   Mat Sigma_state_cov;
   vector<PointStatistics> pt_statistics;
+  vector<bool> is_pt_found;
 
   Mat Pn_noise_cov; // 6 x 6
   Mat current_frame;
@@ -190,6 +191,18 @@ class MY_SLAM {
       {120, 181, 123, 232,  17, 197,  83,  86,  97,   1, 236,   8,  63, 151, 104,  48, 152, 187,  21,  64,  90,  43, 176,  51, 243, 205,  32, 123, 114,   2, 230,  42},
       { 72, 171, 147, 183, 168, 200,  36,  39, 170,   9, 138, 112, 255, 183,   0,  82, 130, 119, 108,   1,  16, 201, 131,  33, 237, 245, 124,  80, 128,   0, 135,  10},
       {164,  96,  27, 170, 152, 169,  35, 192, 172,   0, 224,  72, 151, 211,  41,  88, 216,   8,  74, 114,  10,  39,  82,  16, 241, 128,  34,  56, 208,  27,   3, 130}
+  };
+  unsigned char known_descriptors_array_ORB_C1[4][32] = {
+      {101, 160, 177,  99, 145,  79, 107, 152, 123, 161, 175,   8, 211, 119,  88,  48, 145,  92, 120, 122,  27, 112, 249,  50, 207, 222,   5, 116, 192, 163,  70,  32},
+      { 88, 177,  16, 104,  25, 205,  16,  13, 171,   5, 168,   8, 174, 211,  72, 214, 128, 179, 236,  80,  26,  11, 210,  81, 153, 245,   0, 123,  66,   2, 143,  35},
+      { 34,  36, 161,  89, 165, 251, 149,   3,  95,  47, 115, 185, 194, 188,  85, 189, 153,  30, 224,  17, 190, 248, 101, 146,  11,  86,  80,  83, 199,  76, 214, 102},
+      {244, 182, 132,  30, 201, 107,  71, 232,  83, 254, 225,  61,  66, 100,  15,  31,  89, 198, 232,  34,  60, 103, 251,  30, 185,  34,  85,  63, 233, 127, 246, 214}
+  };
+  unsigned char known_descriptors_array_ORB_C2[4][32] = {
+      {109, 104, 145,  99,  21,  79,  98, 144, 115, 168, 107,   8, 211,  81,  81, 180, 153, 236, 124, 122,  11, 176, 249,  58, 175, 253,   1,  52, 202, 179,  66, 160},
+      { 84, 120, 158, 164,  40, 108,  85,  16, 164, 190, 170,  33, 215, 147,  65,  90, 162, 245, 108,  66,  72,  65, 211,  32, 209, 227, 102,  17,  32, 115,   7,  35},
+      {101,  46, 133,  85, 224,  46, 111, 146, 122, 250,  34,  92, 210,  33,  81,  63, 133, 102, 104,  62, 177,  80, 249,  34,  45,  62, 117,  52, 200, 241, 210,  48},
+      { 86,  14, 142, 190, 136,  34,  13, 183, 176,  87, 194,  83, 245, 227,  35,  91, 225, 103,  61, 133,  56, 205, 139, 226, 248, 163, 254, 128, 160, 112, 181, 104}
   };
 
   Mat known_ORB_descriptors = Mat(4, 32, CV_8UC1, &known_descriptors_array_ORB_HD).clone();
@@ -430,7 +443,7 @@ class MY_SLAM {
               pt.ray_direction,
               pt.dist_resolution,
               pt.N_prob_segments,
-              hashcolor(i_pt + points_uid_counter));
+              hashcolor(*reinterpret_cast<int*>(&(it_pt->ray_direction[0]))));
       DrawCross(output_mat, origin_2d, Scalar(0, 255, 255), 5);
 
 //      Mat distances = L2DistanceMat(image,pt.image);
@@ -674,25 +687,53 @@ class MY_SLAM {
   }
 
   void RemoveBadPoints2(){
+    if(pt_statistics.size() <= 8){
+      return;
+    }
     double sum_traveled_distance = 0;
     double sum_mean_sq_distance = 0;
+    double sum_mean_exp_sq_distance = 0;
+    double sum_mean_exp_unsim = 0;
+    int found_count = 0;
     for(int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt){
-      sum_traveled_distance += pt_statistics[i_pt].traveled_distance;
-      sum_mean_sq_distance += pt_statistics[i_pt].mean_squared_detector_distance();
+      if(is_pt_found[i_pt]) {
+        found_count++;
+        sum_traveled_distance += pt_statistics[i_pt].traveled_distance;
+        sum_mean_sq_distance += pt_statistics[i_pt].mean_squared_detector_distance();
+        sum_mean_exp_sq_distance += pt_statistics[i_pt].exp_mean_squared_reproj_distance;
+        sum_mean_exp_unsim += pt_statistics[i_pt].exp_mean_unsimilarity;
+      }
     }
-    double mean_traveled_distance = sum_traveled_distance / pt_statistics.size();
-    double mean_mean_sq_distance = sum_mean_sq_distance / pt_statistics.size();
+    if(found_count <= 8){
+      return;
+    }
+    double mean_traveled_distance = sum_traveled_distance / found_count;
+    double mean_mean_sq_distance = sum_mean_sq_distance / found_count;
+    double mean_exp_sq_distance = sum_mean_exp_sq_distance / found_count;
+    double mean_exp_unsim = sum_mean_exp_unsim / found_count;
     for(int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt){
       if(pt_statistics[i_pt].n_observations > 3) {
         if (
+            (
 //            norm(pt_statistics[i_pt].initial_position - x_state_mean.feature_positions_w[i_pt]) > 30 ||
 //            pt_statistics[i_pt].traveled_distance > mean_traveled_distance * 2.6 ||
-            pt_statistics[i_pt].mean_squared_detector_distance() > mean_mean_sq_distance * 2.3
+//            pt_statistics[i_pt].mean_squared_detector_distance() > mean_mean_sq_distance * 2.3 ||
+//            pt_statistics[i_pt].mean_squared_detector_distance() > 40 ||
+//            pt_statistics[i_pt].exp_mean_squared_reproj_distance > mean_exp_sq_distance * 2.0
+//            pt_statistics[i_pt].exp_mean_unsimilarity > mean_exp_unsim * 2.3 ||
+            pt_statistics[i_pt].exp_mean_unsimilarity > 60
+            )
+            && (i_pt >= 4
+                ||frame_number > 200
+            ) &&
+                is_pt_found[i_pt]
             ) {
           RemovePoint(i_pt);
         }
       }
     }
+    cout<<"rr Mean exp unsimilarity:"<<mean_exp_unsim<<endl;
+    cout<<"rr mean_mean_sq_distance:"<<mean_mean_sq_distance<<endl;
   }
 
   void DrawAxis() {
@@ -725,7 +766,8 @@ class MY_SLAM {
       bool remove_this_pt = false;
       int prob_argmax = 0;
       double max_prob = 0;
-      for (int i_prob = 1; i_prob < (*pt_it).prob_distribution.size(); ++i_prob) {
+      const int MIN_DISTANCE_SEGMENT = 2;
+      for (int i_prob = MIN_DISTANCE_SEGMENT; i_prob < (*pt_it).prob_distribution.size(); ++i_prob) {
         double prob = (*pt_it).prob_distribution[i_prob];
         if (prob > max_prob) {
           max_prob = prob;
@@ -808,33 +850,35 @@ class MY_SLAM {
         should_be_found[i_pt] = false;
       }
     }
-    vector<bool> is_found;
+    vector<double> descriptor_unsimilarity(x_state_mean.feature_positions_w.size(),0);
     vector<Point2d> observations = GetMatchingPointsCoordinates(key_points,
                                                                 kp_descriptors,
                                                                 known_descriptors,
                                                                 predicted_points,
                                                                 search_radius,
                                                                 NORM_HAMMING,
-                                                                &is_found);
+                                                                &is_pt_found,
+                                                                &descriptor_unsimilarity);
     DrawPoints(output_mat, observations, 'o', 5, pt_statistics);
     DrawPoints(output_mat, predicted_points, 'x', 5,pt_statistics);
     DrawPoints(output_mat, predicted_points, 'c', search_radius,pt_statistics);
-    assert(is_found.size() == x_state_mean.feature_positions_w.size());
-    for (int i_pt = 0; i_pt < is_found.size(); ++i_pt) {
-      if (is_found[i_pt]) {
+    assert(is_pt_found.size() == x_state_mean.feature_positions_w.size());
+    for (int i_pt = 0; i_pt < is_pt_found.size(); ++i_pt) {
+      pt_statistics[i_pt].update_exp_mean_unsimilarity(descriptor_unsimilarity[i_pt]);
+      if (is_pt_found[i_pt]) {
         pt_statistics[i_pt].n_observations++;
       } else {
         if(should_be_found[i_pt]) {
-          pt_statistics[i_pt].sum_squared_reproj_distance += search_radius * search_radius;
+          pt_statistics[i_pt].update_mean_squared_reproj_distance(search_radius);
         }
       }
     }
 //Update
-    StateMean sparse_x_state_mean = ToSparseState(x_state_mean, is_found);
-    StateMean sparse_x_state_mean_pred = ToSparseState(x_state_mean_pred, is_found);
+    StateMean sparse_x_state_mean = ToSparseState(x_state_mean, is_pt_found);
+    StateMean sparse_x_state_mean_pred = ToSparseState(x_state_mean_pred, is_pt_found);
     vector<bool> is_colrow_included(N_VARS_FOR_CAMERA, true);
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
-      if (is_found[i_pt]) {
+      if (is_pt_found[i_pt]) {
         for (int i_coord = 0; i_coord < 3; ++i_coord) {
           is_colrow_included.push_back(true);
         }
@@ -844,9 +888,9 @@ class MY_SLAM {
         }
       }
     }
-//    is_colrow_included.insert( is_colrow_included.end(), is_found.begin(), is_found.end() );
-//    cout<<"N_VARS_FOR_CAMERA: "<<N_VARS_FOR_CAMERA<<" is_found: "<<is_found.size()<<"Sigma_state_cov.cols: "<<Sigma_state_cov.cols<<endl;
-//    assert(N_VARS_FOR_CAMERA + 3 * is_found.size() == Sigma_state_cov.cols);
+//    is_colrow_included.insert( is_colrow_included.end(), is_pt_found.begin(), is_pt_found.end() );
+//    cout<<"N_VARS_FOR_CAMERA: "<<N_VARS_FOR_CAMERA<<" is_pt_found: "<<is_pt_found.size()<<"Sigma_state_cov.cols: "<<Sigma_state_cov.cols<<endl;
+//    assert(N_VARS_FOR_CAMERA + 3 * is_pt_found.size() == Sigma_state_cov.cols);
     Mat sparse_Sigma_state_cov = ToSparseMat(Sigma_state_cov, is_colrow_included);
 
     Mat observations_diff =
@@ -897,8 +941,10 @@ class MY_SLAM {
     reprojected_points = FeaturesProjections(x_state_mean_new, camera_intrinsic);
     obstacles_for_new_points.insert(obstacles_for_new_points.end(), reprojected_points.begin(), reprojected_points.end());
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
-      pt_statistics[i_pt].sum_squared_reproj_distance +=
-          norm(reprojected_points[i_pt] - observations[i_pt]);
+      if(is_pt_found[i_pt]) {
+        pt_statistics[i_pt].update_mean_squared_reproj_distance(
+            norm(reprojected_points[i_pt] - observations[i_pt]));
+      }
     }
 
     DrawPoints(output_mat, reprojected_points, '+', 5, pt_statistics);
@@ -944,38 +990,40 @@ class MY_SLAM {
         should_be_found[i_pt] = false;
       }
     }
-    vector<bool> is_found;
+    vector<double> descriptor_unsimilarity(x_state_mean.feature_positions_w.size(),0);
     vector<Point2d> observations = GetMatchingPointsCoordinates(key_points,
                                                                 kp_descriptors,
                                                                 known_descriptors,
                                                                 predicted_points,
                                                                 search_radius,
                                                                 NORM_HAMMING,
-                                                                &is_found);
+                                                                &is_pt_found,
+                                                                &descriptor_unsimilarity);
     DrawPoints(output_mat, observations, 'o', 7, pt_statistics);
     DrawPoints(output_mat, predicted_points, 'x', 5,pt_statistics);
     DrawPoints(output_mat, predicted_points, 'c', search_radius,pt_statistics);
-    assert(is_found.size() == x_state_mean.feature_positions_w.size());
-    for (int i_pt = 0; i_pt < is_found.size(); ++i_pt) {
-      if (is_found[i_pt]) {
+    assert(is_pt_found.size() == x_state_mean.feature_positions_w.size());
+    for (int i_pt = 0; i_pt < is_pt_found.size(); ++i_pt) {
+      pt_statistics[i_pt].update_exp_mean_unsimilarity(descriptor_unsimilarity[i_pt]);
+      if (is_pt_found[i_pt]) {
         pt_statistics[i_pt].n_observations++;
       } else {
         if(should_be_found[i_pt]) {
-          pt_statistics[i_pt].sum_squared_reproj_distance += search_radius * search_radius;
+          pt_statistics[i_pt].update_mean_squared_reproj_distance(search_radius);
         }
       }
     }
 //Update
-    StateMean sparse_x_state_mean = ToSparseState(x_state_mean, is_found);
+    StateMean sparse_x_state_mean = ToSparseState(x_state_mean, is_pt_found);
     if (sparse_x_state_mean.feature_positions_w.size() == 0) { //Nothing found
       x_state_mean = x_state_mean_pred;
       Sigma_state_cov = Sigma_state_cov_pred;
       return;
     }
-    StateMean sparse_x_state_mean_pred = ToSparseState(x_state_mean_pred, is_found);
+    StateMean sparse_x_state_mean_pred = ToSparseState(x_state_mean_pred, is_pt_found);
     vector<bool> is_colrow_included(N_VARS_FOR_CAMERA, true);
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
-      if (is_found[i_pt]) {
+      if (is_pt_found[i_pt]) {
         cout << "#";
         for (int i_coord = 0; i_coord < 3; ++i_coord) {
           is_colrow_included.push_back(true);
@@ -990,8 +1038,8 @@ class MY_SLAM {
     cout << endl;
     Mat sparse_Sigma_state_cov = ToSparseMat(Sigma_state_cov, is_colrow_included);
     Mat sparse_Sigma_state_cov_pred = ToSparseMat(Sigma_state_cov_pred, is_colrow_included);
-    auto sparse_observations = ToSparseVec(observations, is_found);
-    auto sparse_predicted_points = ToSparseVec(predicted_points, is_found);
+    auto sparse_observations = ToSparseVec(observations, is_pt_found);
+    auto sparse_predicted_points = ToSparseVec(predicted_points, is_pt_found);
     assert(sparse_x_state_mean.feature_positions_w.size() != x_state_mean.feature_positions_w.size()
                || cv::countNonZero(sparse_Sigma_state_cov != Sigma_state_cov) == 0);
     assert(sparse_x_state_mean.feature_positions_w.size() != x_state_mean.feature_positions_w.size()
@@ -1035,7 +1083,7 @@ class MY_SLAM {
         * sparse_Sigma_state_cov_pred;
     SigmaSetZeroWorldCameraCorr(sparse_Sigma_state_cov_new);
     StateMean x_state_mean_new =
-        UpdateFromSparseState(x_state_mean_pred, sparse_x_state_mean_new, is_found);
+        UpdateFromSparseState(x_state_mean_pred, sparse_x_state_mean_new, is_pt_found);
     assert(isSemiPositive(sparse_Sigma_state_cov_new));
     assert(isSemiPositive(Sigma_state_cov_pred));
     Mat Sigma_state_cov_new =
@@ -1054,8 +1102,7 @@ class MY_SLAM {
     reprojected_points = FeaturesProjections(x_state_mean_new, camera_intrinsic);
     obstacles_for_new_points.insert(obstacles_for_new_points.end(), reprojected_points.begin(), reprojected_points.end());
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
-      pt_statistics[i_pt].sum_squared_reproj_distance +=
-          norm(reprojected_points[i_pt] - observations[i_pt]);
+      pt_statistics[i_pt].update_mean_squared_reproj_distance (norm(reprojected_points[i_pt] - observations[i_pt]));
     }
     DrawPoints(output_mat, reprojected_points, '+', 5, pt_statistics);
 
@@ -1078,7 +1125,7 @@ class MY_SLAM {
 //  constexpr static const double initial_angular_speed_uncertainty = 0.1;
 //  double points_init_prob_threshold = 0.45;
 //  int frames_per_new_point = 5;
-  constexpr static const double pixel_noise = 11;
+  constexpr static const double pixel_noise = 7;
   constexpr static const double position_speed_noise = 2;
   constexpr static const double angular_speed_noise = 0.5;
   constexpr static const double initial_map_uncertainty = 2;
@@ -1086,8 +1133,8 @@ class MY_SLAM {
   constexpr static const double initial_direction_uncertainty = 0.2;
   constexpr static const double initial_speed_uncertainty = 0.01;
   constexpr static const double initial_angular_speed_uncertainty = 0.1;
-  double points_init_prob_threshold = 0.45;
-  int frames_per_new_point = 5;
+  double points_init_prob_threshold = 0.6;
+  int frames_per_new_point = 1;
   MY_SLAM()
       : it_(nh_) {
     // Subscrive to input video feed and publish output video feed
@@ -1142,6 +1189,11 @@ class MY_SLAM {
     x_state_mean.feature_positions_w.push_back(Point3d(-40, -41, 125.3));
     x_state_mean.feature_positions_w.push_back(Point3d(40, -41, 125.3));
     x_state_mean.feature_positions_w.push_back(Point3d(40, -4, 125.3));
+
+//    x_state_mean.feature_positions_w.push_back(Point3d(-37.5, -6.5, 125.3)); //cm
+//    x_state_mean.feature_positions_w.push_back(Point3d(-37.5, -39.5, 125.3));
+//    x_state_mean.feature_positions_w.push_back(Point3d(37.5, -39.5, 125.3));
+//    x_state_mean.feature_positions_w.push_back(Point3d(37.5, -6.5, 125.3));
 
     PointStatistics stat0;
     stat0.first_frame = 0; // TODO: or 1 ?

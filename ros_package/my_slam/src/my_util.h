@@ -39,7 +39,8 @@ vector<Point2d> GetMatchingPointsCoordinates(const vector<KeyPoint> &key_points,
                                              const vector<Point2d> &expected_positions,
                                              int search_radius,
                                              const NormTypes &norm_type,
-                                             vector<bool> *isFound);
+                                             vector<bool> *isFound,
+                                             vector<double> *descr_unsimilarity);
 
 double limitPi(double a);
 
