@@ -15,6 +15,7 @@
 #include "my_types.h"
 #include "jacobians.h"
 #include "my_geometry.h"
+#include "triangulation.h"
 
 
 //#include <pcl_ros/point_cloud.h>
@@ -90,9 +91,9 @@ Mat predict_Sigma_cam(const Mat &Sigma_cam,
   return F * Sigma_cam * F.t() + Q * Pn_noise_cov * Q.t();
 }
 
-void SigmaSetZeroWorldCameraCorr(Mat Sigma){
-  Mat WC = Sigma(Rect(0,N_VARS_FOR_CAMERA, N_VARS_FOR_CAMERA, Sigma.rows - N_VARS_FOR_CAMERA));
-  Mat CW = Sigma(Rect(N_VARS_FOR_CAMERA,0, Sigma.cols - N_VARS_FOR_CAMERA, N_VARS_FOR_CAMERA));
+void SigmaSetZeroWorldCameraCorr(Mat Sigma) {
+  Mat WC = Sigma(Rect(0, N_VARS_FOR_CAMERA, N_VARS_FOR_CAMERA, Sigma.rows - N_VARS_FOR_CAMERA));
+  Mat CW = Sigma(Rect(N_VARS_FOR_CAMERA, 0, Sigma.cols - N_VARS_FOR_CAMERA, N_VARS_FOR_CAMERA));
   WC.setTo(Scalar(0));
   CW.setTo(Scalar(0));
 }
@@ -114,13 +115,16 @@ Mat predict_Sigma_full(const Mat &Sigma_full,
 }
 
 class MY_SLAM {
+  enum { UNINITIALIZED = 0, MAP_AND_TRACK = 1 };
+  int operating_mode = UNINITIALIZED;
+  Mat frame_init;
 
   ros::NodeHandle nh_;
+
   image_transport::ImageTransport it_;
-
   image_transport::Subscriber image_sub_;
-  ros::Publisher pub;
 
+  ros::Publisher pub;
   StateMean x_state_mean;
   Mat Sigma_state_cov;
   vector<PointStatistics> pt_statistics;
@@ -151,58 +155,94 @@ class MY_SLAM {
        122, 158, 128, 111, 253, 132, 150, 97, 33, 0, 230, 170}
   };
   unsigned char known_descriptors_array_ORB_HD2[4][32] = {
-      {245, 113, 253, 228, 230,  78, 253, 148, 169, 250,  50, 201,  95,  63, 221,  59, 166, 213, 125, 239, 201, 113, 189, 192, 247, 217, 237, 180, 101, 243, 210, 115},
-      {124, 169, 146,  40, 201, 157,  80, 194, 171, 149, 168,   9,  47, 139,  99, 146, 128, 187, 205,  80,  14,  43, 146, 177, 219, 209,   4, 123, 226,   7,  14,   2},
-      { 79, 238, 145, 227, 184, 166,  74, 158,  50, 187,  10, 192, 157,  67, 201, 218,  23,  93, 125, 222,  42,  84, 201,  50, 172, 196, 191, 244, 168, 211,   1,  33},
-      {101,  36, 221,  69, 152,  47,  74,  27, 114, 161, 174,  76, 211,  99,  65,  58,  23, 100, 104,  60,  25, 248, 221,  10, 237, 158,   5,  52, 232, 224,   2,  32}
+      {245, 113, 253, 228, 230, 78, 253, 148, 169, 250, 50, 201, 95, 63, 221, 59, 166, 213, 125,
+       239, 201, 113, 189, 192, 247, 217, 237, 180, 101, 243, 210, 115},
+      {124, 169, 146, 40, 201, 157, 80, 194, 171, 149, 168, 9, 47, 139, 99, 146, 128, 187, 205, 80,
+       14, 43, 146, 177, 219, 209, 4, 123, 226, 7, 14, 2},
+      {79, 238, 145, 227, 184, 166, 74, 158, 50, 187, 10, 192, 157, 67, 201, 218, 23, 93, 125, 222,
+       42, 84, 201, 50, 172, 196, 191, 244, 168, 211, 1, 33},
+      {101, 36, 221, 69, 152, 47, 74, 27, 114, 161, 174, 76, 211, 99, 65, 58, 23, 100, 104, 60, 25,
+       248, 221, 10, 237, 158, 5, 52, 232, 224, 2, 32}
   };
   unsigned char known_descriptors_array_ORB_VERT2[4][32] = {
-      { 76,  54, 189, 111, 168, 111, 117,  25, 106, 174,  47, 108, 215, 119,  73,  58, 149,  84, 108,  40, 145,  96, 251,  26, 237, 255, 101, 124, 192, 226, 199, 115},
-      { 88, 177, 150, 248,  25, 204,  16,   7, 174, 153, 160,   8, 174, 243,  64, 146, 128,  55, 232,  16,  18,  75, 146,  81, 153, 176,  18, 123, 194,   2, 135,  43},
-      { 64, 209, 159, 181, 136,  76,  37, 151, 166, 189,  10,  81, 215, 183,  72,  74, 133,  87, 105,  80,  26, 201,  83,  32, 233, 163, 126,  84, 128,  16, 133,  43},
-      {208, 132,  31, 249, 138, 226,  65, 155, 164,  19, 195,  16, 215,  19,  40, 105,  99,  19, 108, 138, 123, 141,  19,  85, 193, 163, 122,  68,  48,   0, 161,  34}
+      {76, 54, 189, 111, 168, 111, 117, 25, 106, 174, 47, 108, 215, 119, 73, 58, 149, 84, 108, 40,
+       145, 96, 251, 26, 237, 255, 101, 124, 192, 226, 199, 115},
+      {88, 177, 150, 248, 25, 204, 16, 7, 174, 153, 160, 8, 174, 243, 64, 146, 128, 55, 232, 16, 18,
+       75, 146, 81, 153, 176, 18, 123, 194, 2, 135, 43},
+      {64, 209, 159, 181, 136, 76, 37, 151, 166, 189, 10, 81, 215, 183, 72, 74, 133, 87, 105, 80,
+       26, 201, 83, 32, 233, 163, 126, 84, 128, 16, 133, 43},
+      {208, 132, 31, 249, 138, 226, 65, 155, 164, 19, 195, 16, 215, 19, 40, 105, 99, 19, 108, 138,
+       123, 141, 19, 85, 193, 163, 122, 68, 48, 0, 161, 34}
   };
   unsigned char known_descriptors_array_ORB_VERT3[4][32] = {
-      { 96, 182, 189, 119, 184, 111, 119, 191, 107, 175,  46, 108, 247, 119,  64,  50, 149,  86, 108,  40, 145, 120, 251,  31, 239, 255, 117,  52, 192, 242, 198, 123},
-      { 80, 112,  30, 173,  40,  78,  85,  52, 164, 158, 162,   1, 215,  19,   1,  82, 160, 245, 109,  98,  72, 133, 211,   8, 209, 163, 106,  17,  32,  50,  39,  11},
-      {220, 133, 156, 180, 138,  74,  20, 171, 164, 150, 130,  17, 247,  97,  11,  75, 129, 215, 236,  35, 104,  69,  11,  14, 233, 227, 109,  21, 160, 112,  13,  74},
-      {216, 148,  31, 255,  42, 224,  25,  63, 180,  27, 195, 112, 253, 115,  40, 123, 103,  19, 108, 128,  41, 133,   3,  85, 193, 227, 122,  16,  48,   0,  37,  43}
+      {96, 182, 189, 119, 184, 111, 119, 191, 107, 175, 46, 108, 247, 119, 64, 50, 149, 86, 108, 40,
+       145, 120, 251, 31, 239, 255, 117, 52, 192, 242, 198, 123},
+      {80, 112, 30, 173, 40, 78, 85, 52, 164, 158, 162, 1, 215, 19, 1, 82, 160, 245, 109, 98, 72,
+       133, 211, 8, 209, 163, 106, 17, 32, 50, 39, 11},
+      {220, 133, 156, 180, 138, 74, 20, 171, 164, 150, 130, 17, 247, 97, 11, 75, 129, 215, 236, 35,
+       104, 69, 11, 14, 233, 227, 109, 21, 160, 112, 13, 74},
+      {216, 148, 31, 255, 42, 224, 25, 63, 180, 27, 195, 112, 253, 115, 40, 123, 103, 19, 108, 128,
+       41, 133, 3, 85, 193, 227, 122, 16, 48, 0, 37, 43}
   };
   unsigned char known_descriptors_array_ORB_R1[4][32] = {
-      {204, 180, 189, 247, 168,  46, 127, 158,  62, 255,  39,  20, 223,  55,  65,  91,  23, 215, 125,  62, 161, 212, 249,  42, 205, 251, 119,  84, 136, 243,   7, 113},
-      { 80, 120, 159, 237,  40,  78,  85,  48, 164, 174, 162,  32, 247, 147,   1,  82,  34, 245, 108,  98,  72, 133, 147,   8, 209, 231,  98,  17,  32, 179,   7,  43},
-      {225,  48, 157,  53, 140,  45, 176,  26, 250, 243, 160,  93, 182, 184,  81,  59, 137,  71, 122,   5, 181, 110, 211,  16, 205, 155,  81,  56, 200, 105,  83, 154},
-      {229, 253, 152,  71, 145,  30,  70, 184, 123, 160,  47,  72, 210, 114, 205, 182, 145,  78,  72, 122, 245, 240, 249,  42,  47, 223,   5,  52,  74, 115, 202,  36}
+      {204, 180, 189, 247, 168, 46, 127, 158, 62, 255, 39, 20, 223, 55, 65, 91, 23, 215, 125, 62,
+       161, 212, 249, 42, 205, 251, 119, 84, 136, 243, 7, 113},
+      {80, 120, 159, 237, 40, 78, 85, 48, 164, 174, 162, 32, 247, 147, 1, 82, 34, 245, 108, 98, 72,
+       133, 147, 8, 209, 231, 98, 17, 32, 179, 7, 43},
+      {225, 48, 157, 53, 140, 45, 176, 26, 250, 243, 160, 93, 182, 184, 81, 59, 137, 71, 122, 5,
+       181, 110, 211, 16, 205, 155, 81, 56, 200, 105, 83, 154},
+      {229, 253, 152, 71, 145, 30, 70, 184, 123, 160, 47, 72, 210, 114, 205, 182, 145, 78, 72, 122,
+       245, 240, 249, 42, 47, 223, 5, 52, 74, 115, 202, 36}
   };
   unsigned char known_descriptors_array_ORB_RAIL2[4][32] = {
-      {205, 104, 189, 231,  40,  76, 111, 148,  38, 243, 167,   8, 215,  23,  73, 122,   1, 212, 121,  94,  75,  84, 249,  32, 237, 249,   7,  52, 128, 179, 198, 112},
-      { 88,  88, 158, 164,  40, 108,  81,  16, 164,  30, 162,  41, 215,  23,   1,  90, 166, 245, 108,  66,  72,  65, 211,   0, 209, 227,  98,  17,  32, 113,  47,  19},
-      {229, 240, 141,  39,  44,  47, 195, 152, 106, 250,  33,  93, 215, 105,  88,  27, 145,  68, 109, 111, 137, 100, 217,  16, 205, 219,  97, 116, 200, 123,  67,   0},
-      { 94, 177, 186,  34, 153,  29,  83, 105, 171,  29, 173,  25, 206, 248,  78,  18, 181,  67, 249,  51,  22,  99, 155,  65, 219, 253,   1, 127, 202,   7, 143,   7}
+      {205, 104, 189, 231, 40, 76, 111, 148, 38, 243, 167, 8, 215, 23, 73, 122, 1, 212, 121, 94, 75,
+       84, 249, 32, 237, 249, 7, 52, 128, 179, 198, 112},
+      {88, 88, 158, 164, 40, 108, 81, 16, 164, 30, 162, 41, 215, 23, 1, 90, 166, 245, 108, 66, 72,
+       65, 211, 0, 209, 227, 98, 17, 32, 113, 47, 19},
+      {229, 240, 141, 39, 44, 47, 195, 152, 106, 250, 33, 93, 215, 105, 88, 27, 145, 68, 109, 111,
+       137, 100, 217, 16, 205, 219, 97, 116, 200, 123, 67, 0},
+      {94, 177, 186, 34, 153, 29, 83, 105, 171, 29, 173, 25, 206, 248, 78, 18, 181, 67, 249, 51, 22,
+       99, 155, 65, 219, 253, 1, 127, 202, 7, 143, 7}
   };
   unsigned char known_descriptors_array_ORB_RR[4][32] = {
-      {204, 180, 189, 247, 168,  46, 125, 153,  58, 247,  39,  28, 215, 103,  73,  91,  23, 214, 125,  62, 177, 212, 249,   2, 205, 251, 117,  84, 128, 225, 135, 112},
-      { 84, 112, 158, 173,  40,  76,  85,  16, 164,  30, 171,   1, 215, 147,   9,  90, 162, 149, 109,   2,  72,  69, 211,   0, 209, 225, 122,  21,  32, 114,  39,   3},
-      {201,  88,  92, 164,  43,  26,  92, 180,  33, 242,   6, 172, 223,  19, 131, 251,   6, 213, 252, 110, 237,  68, 215, 168, 198, 235,  96, 132,  46, 181,  11,  25},
-      { 90, 188, 140, 183, 138,  36,  28, 175, 190, 223, 130, 149, 237, 239,  74,  91, 231, 231, 253, 149,  56,  77, 155, 227, 248, 227, 255, 217, 168, 116, 169,  91}
+      {204, 180, 189, 247, 168, 46, 125, 153, 58, 247, 39, 28, 215, 103, 73, 91, 23, 214, 125, 62,
+       177, 212, 249, 2, 205, 251, 117, 84, 128, 225, 135, 112},
+      {84, 112, 158, 173, 40, 76, 85, 16, 164, 30, 171, 1, 215, 147, 9, 90, 162, 149, 109, 2, 72,
+       69, 211, 0, 209, 225, 122, 21, 32, 114, 39, 3},
+      {201, 88, 92, 164, 43, 26, 92, 180, 33, 242, 6, 172, 223, 19, 131, 251, 6, 213, 252, 110, 237,
+       68, 215, 168, 198, 235, 96, 132, 46, 181, 11, 25},
+      {90, 188, 140, 183, 138, 36, 28, 175, 190, 223, 130, 149, 237, 239, 74, 91, 231, 231, 253,
+       149, 56, 77, 155, 227, 248, 227, 255, 217, 168, 116, 169, 91}
   };
   unsigned char known_descriptors_array_ORB_RAND[4][32] = {
-      { 96, 181, 185, 103, 248, 111,  99, 189,  43, 253, 111,   8, 247, 247,  72,  50, 149,  94, 104,   8, 147, 112, 251,  51, 205, 191,   5, 116, 192, 226, 199, 248},
-      {120, 181, 123, 232,  17, 197,  83,  86,  97,   1, 236,   8,  63, 151, 104,  48, 152, 187,  21,  64,  90,  43, 176,  51, 243, 205,  32, 123, 114,   2, 230,  42},
-      { 72, 171, 147, 183, 168, 200,  36,  39, 170,   9, 138, 112, 255, 183,   0,  82, 130, 119, 108,   1,  16, 201, 131,  33, 237, 245, 124,  80, 128,   0, 135,  10},
-      {164,  96,  27, 170, 152, 169,  35, 192, 172,   0, 224,  72, 151, 211,  41,  88, 216,   8,  74, 114,  10,  39,  82,  16, 241, 128,  34,  56, 208,  27,   3, 130}
+      {96, 181, 185, 103, 248, 111, 99, 189, 43, 253, 111, 8, 247, 247, 72, 50, 149, 94, 104, 8,
+       147, 112, 251, 51, 205, 191, 5, 116, 192, 226, 199, 248},
+      {120, 181, 123, 232, 17, 197, 83, 86, 97, 1, 236, 8, 63, 151, 104, 48, 152, 187, 21, 64, 90,
+       43, 176, 51, 243, 205, 32, 123, 114, 2, 230, 42},
+      {72, 171, 147, 183, 168, 200, 36, 39, 170, 9, 138, 112, 255, 183, 0, 82, 130, 119, 108, 1, 16,
+       201, 131, 33, 237, 245, 124, 80, 128, 0, 135, 10},
+      {164, 96, 27, 170, 152, 169, 35, 192, 172, 0, 224, 72, 151, 211, 41, 88, 216, 8, 74, 114, 10,
+       39, 82, 16, 241, 128, 34, 56, 208, 27, 3, 130}
   };
   unsigned char known_descriptors_array_ORB_C1[4][32] = {
-      {101, 160, 177,  99, 145,  79, 107, 152, 123, 161, 175,   8, 211, 119,  88,  48, 145,  92, 120, 122,  27, 112, 249,  50, 207, 222,   5, 116, 192, 163,  70,  32},
-      { 88, 177,  16, 104,  25, 205,  16,  13, 171,   5, 168,   8, 174, 211,  72, 214, 128, 179, 236,  80,  26,  11, 210,  81, 153, 245,   0, 123,  66,   2, 143,  35},
-      { 34,  36, 161,  89, 165, 251, 149,   3,  95,  47, 115, 185, 194, 188,  85, 189, 153,  30, 224,  17, 190, 248, 101, 146,  11,  86,  80,  83, 199,  76, 214, 102},
-      {244, 182, 132,  30, 201, 107,  71, 232,  83, 254, 225,  61,  66, 100,  15,  31,  89, 198, 232,  34,  60, 103, 251,  30, 185,  34,  85,  63, 233, 127, 246, 214}
+      {101, 160, 177, 99, 145, 79, 107, 152, 123, 161, 175, 8, 211, 119, 88, 48, 145, 92, 120, 122,
+       27, 112, 249, 50, 207, 222, 5, 116, 192, 163, 70, 32},
+      {88, 177, 16, 104, 25, 205, 16, 13, 171, 5, 168, 8, 174, 211, 72, 214, 128, 179, 236, 80, 26,
+       11, 210, 81, 153, 245, 0, 123, 66, 2, 143, 35},
+      {34, 36, 161, 89, 165, 251, 149, 3, 95, 47, 115, 185, 194, 188, 85, 189, 153, 30, 224, 17,
+       190, 248, 101, 146, 11, 86, 80, 83, 199, 76, 214, 102},
+      {244, 182, 132, 30, 201, 107, 71, 232, 83, 254, 225, 61, 66, 100, 15, 31, 89, 198, 232, 34,
+       60, 103, 251, 30, 185, 34, 85, 63, 233, 127, 246, 214}
   };
   unsigned char known_descriptors_array_ORB_C2[4][32] = {
-      {109, 104, 145,  99,  21,  79,  98, 144, 115, 168, 107,   8, 211,  81,  81, 180, 153, 236, 124, 122,  11, 176, 249,  58, 175, 253,   1,  52, 202, 179,  66, 160},
-      { 84, 120, 158, 164,  40, 108,  85,  16, 164, 190, 170,  33, 215, 147,  65,  90, 162, 245, 108,  66,  72,  65, 211,  32, 209, 227, 102,  17,  32, 115,   7,  35},
-      {101,  46, 133,  85, 224,  46, 111, 146, 122, 250,  34,  92, 210,  33,  81,  63, 133, 102, 104,  62, 177,  80, 249,  34,  45,  62, 117,  52, 200, 241, 210,  48},
-      { 86,  14, 142, 190, 136,  34,  13, 183, 176,  87, 194,  83, 245, 227,  35,  91, 225, 103,  61, 133,  56, 205, 139, 226, 248, 163, 254, 128, 160, 112, 181, 104}
+      {109, 104, 145, 99, 21, 79, 98, 144, 115, 168, 107, 8, 211, 81, 81, 180, 153, 236, 124, 122,
+       11, 176, 249, 58, 175, 253, 1, 52, 202, 179, 66, 160},
+      {84, 120, 158, 164, 40, 108, 85, 16, 164, 190, 170, 33, 215, 147, 65, 90, 162, 245, 108, 66,
+       72, 65, 211, 32, 209, 227, 102, 17, 32, 115, 7, 35},
+      {101, 46, 133, 85, 224, 46, 111, 146, 122, 250, 34, 92, 210, 33, 81, 63, 133, 102, 104, 62,
+       177, 80, 249, 34, 45, 62, 117, 52, 200, 241, 210, 48},
+      {86, 14, 142, 190, 136, 34, 13, 183, 176, 87, 194, 83, 245, 227, 35, 91, 225, 103, 61, 133,
+       56, 205, 139, 226, 248, 163, 254, 128, 160, 112, 181, 104}
   };
 
   Mat known_ORB_descriptors = Mat(4, 32, CV_8UC1, &known_descriptors_array_ORB_HD).clone();
@@ -221,8 +261,8 @@ class MY_SLAM {
   const Mat camera_intrinsic = Mat(3, 3, CV_64F, &camera_intrinsic_array).clone();
 
   bool IsStateCorrect() {
-    if(!isSemiPositive(Sigma_state_cov)){
-      cout<<"Sigma is not semi-positive: "<<Sigma_state_cov<<endl;
+    if (!isSemiPositive(Sigma_state_cov)) {
+      cout << "Sigma is not semi-positive: " << Sigma_state_cov << endl;
       return false;
     }
     if (isnan(x_state_mean.position_w.x) ||
@@ -439,12 +479,12 @@ class MY_SLAM {
                                        x_state_mean.position_w,
                                        x_state_mean.direction_wr,
                                        camera_intrinsic);
-      ShowRay(pt.position,
-              pt.ray_direction,
-              pt.dist_resolution,
-              pt.N_prob_segments,
-              hashcolor(*reinterpret_cast<int*>(&(it_pt->ray_direction[0]))));
-      DrawCross(output_mat, origin_2d, Scalar(0, 255, 255), 5);
+//      ShowRay(pt.position,
+//              pt.ray_direction,
+//              pt.dist_resolution,
+//              pt.N_prob_segments,
+//              hashcolor(*reinterpret_cast<int *>(&(it_pt->ray_direction[0]))));
+//      DrawCross(output_mat, origin_2d, Scalar(0, 255, 255), 5);
 
 //      Mat distances = L2DistanceMat(image,pt.image);
       Mat distances
@@ -511,39 +551,46 @@ class MY_SLAM {
         Point2i best_match_pt = minLoc + Point2i(argmin_region.x, argmin_region.y)
             + Point2i(pt.image_patch.cols / 2, pt.image_patch.rows / 2);
         obstacles_for_new_points.push_back(best_match_pt);
-        DrawCross(output_mat, best_match_pt, hashcolor(i_pt + points_uid_counter));
+//        DrawCross(output_mat, best_match_pt, hashcolor(i_pt + points_uid_counter));
         Vec2d best_match_vec;
         best_match_vec[0] = best_match_pt.x;
         best_match_vec[1] = best_match_pt.y;
         double old_prob = pt.prob_distribution[i_segment];
         assert(old_prob == old_prob);
 //        Todo: take image diffirence norm into account
-        double new_probability = old_prob * NormalPdf2d(sigma, coord_2d, best_match_vec);
-        assert(new_probability == new_probability);
-        pt.prob_distribution[i_segment] = new_probability;
+        if(determinant(sigma) > 0) {
+          double new_probability = old_prob * NormalPdf2d(sigma, coord_2d, best_match_vec);
+          assert(new_probability == new_probability);
+          pt.prob_distribution[i_segment] = new_probability;
+        }else{
+          cerr<<"determinant(sigma) <= 0 "<<endl;
+          remove_this_point = true;
+          break;
+        }
       }
 //      normalize(&pt.prob_distribution, sum(pt.prob_distribution)[0]);
 
-      //Normalization
-      double remaining_prob = 1;
-      double sum_of_updated = 0;
+      if(! remove_this_point) {
+        //Normalization
+        double remaining_prob = 1;
+        double sum_of_updated = 0;
 
-      for(int i_seg = 0; i_seg < pt.N_prob_segments; ++i_seg){
-        if(!is_updated[i_seg]){
-          remaining_prob -= pt.prob_distribution[i_seg];
-        }else{
-          sum_of_updated += pt.prob_distribution[i_seg];
+        for (int i_seg = 0; i_seg < pt.N_prob_segments; ++i_seg) {
+          if (!is_updated[i_seg]) {
+            remaining_prob -= pt.prob_distribution[i_seg];
+          } else {
+            sum_of_updated += pt.prob_distribution[i_seg];
+          }
         }
-      }
-      assert(remaining_prob >= -0.001);
-      for(int i_seg = 0; i_seg < pt.N_prob_segments; ++i_seg){
-        if(is_updated[i_seg]){
-          if(pt.prob_distribution[i_seg] != 0){
-            pt.prob_distribution[i_seg] *= remaining_prob / sum_of_updated;
+        assert(remaining_prob >= -0.001);
+        for (int i_seg = 0; i_seg < pt.N_prob_segments; ++i_seg) {
+          if (is_updated[i_seg]) {
+            if (pt.prob_distribution[i_seg] != 0) {
+              pt.prob_distribution[i_seg] *= remaining_prob / sum_of_updated;
+            }
           }
         }
       }
-
       --pt.life_duration;
       if (pt.life_duration <= 0) {
         remove_this_point = true;
@@ -559,11 +606,11 @@ class MY_SLAM {
     ConvertToFullyInitialized();
   }
 
-  void process_frame(const Mat &new_frame, int delta_frames ,int call_counter){
+  void process_frame(const Mat &new_frame, int delta_frames, int call_counter) {
     assert(known_ORB_descriptors.rows == x_state_mean.feature_positions_w.size());
     assert(pt_statistics.size() == x_state_mean.feature_positions_w.size());
     if (!IsStateCorrect()) {
-      cout<<"STATE INCORRECT"<<endl;
+      cout << "STATE INCORRECT" << endl;
       assert(false);
     }
 
@@ -576,25 +623,24 @@ class MY_SLAM {
     EKF_iteration(current_frame, delta_frames);
     SigmaSetZeroWorldCameraCorr(Sigma_state_cov);
     assert(isSemiPositive(Sigma_state_cov));
-    assert(Triangulize(&Sigma_state_cov));
+    assert(Symetrize(&Sigma_state_cov));
     assert(isSemiPositive(Sigma_state_cov));
     UpdatePartiallyInitializedFeaturs(current_frame);
     assert(isSemiPositive(Sigma_state_cov));
-    assert(Triangulize(&Sigma_state_cov));
-    if(call_counter % frames_per_new_point == 0) {
+    assert(Symetrize(&Sigma_state_cov));
+    if (call_counter % frames_per_new_point == 0) {
       DetectNewFeatures2(current_frame);
     }
-    if(call_counter % 20 == 0 && call_counter > 40) {
+    if (call_counter % 20 == 0 && call_counter > 40) {
 //      RemoveBadPoints();
     }
-    if(call_counter > 35) {
+    if (call_counter > 35) {
       RemoveBadPoints2();
     }
 
-
     static double ox_dist_sq_sum = 0;
-    ox_dist_sq_sum += pow(x_state_mean.position_w.y,2) + pow(x_state_mean.position_w.z,2);
-    dbg<<"sq_dist: "<<ox_dist_sq_sum / call_counter<<endl;
+    ox_dist_sq_sum += pow(x_state_mean.position_w.y, 2) + pow(x_state_mean.position_w.z, 2);
+    dbg << "sq_dist: " << ox_dist_sq_sum / call_counter << endl;
 
     //Publish
     PublishAll();
@@ -604,12 +650,6 @@ class MY_SLAM {
     cv::imshow("raw", current_frame);
     cv::imshow(OPENCV_WINDOW, output_mat);
     dbg << "Frame: " << frame_number << " call: " << call_counter << endl;
-
-    //Termination
-
-    if (cv::waitKey(1) == 27) {
-      ros::shutdown();
-    }
   }
 
   void subscription_callback(const sensor_msgs::ImageConstPtr &msg_in) {
@@ -625,28 +665,45 @@ class MY_SLAM {
     }
 
     Mat new_frame = ImageFromMsg(msg_in);
-    process_frame(new_frame, delta_frames,call_counter);
-  }
-
-  Mat MatWithoutRow(const Mat & matIn, int row){
-    // Removing a row
-    Mat matOut( matIn.rows - 1, matIn.cols, matIn.type()); // Result: matIn less that one row.
-    if ( row > 0 ) // Copy everything above that one row.
-    {
-      cv::Rect rect( 0, 0, matIn.cols, row );
-      matIn( rect ).copyTo( matOut( rect ) );
+    imshow("raw", new_frame);
+    if(call_counter == 1){
+      frame_init = new_frame.clone();
     }
 
-    if ( row < matIn.rows - 1 ) // Copy everything below that one row.
+    if (operating_mode == MAP_AND_TRACK) {
+      cout<<"n_points: "<<x_state_mean.feature_positions_w.size()<<" n_descriptors"<<known_ORB_descriptors.rows<<endl;
+      process_frame(new_frame, delta_frames, call_counter);
+    }else if(operating_mode == UNINITIALIZED){
+//      imshow("first frame", frame_init);
+      if(call_counter == 10){
+        AutomaticInitialization(frame_init, new_frame);
+      }
+    }
+
+    if (cv::waitKey(1) == 27) {
+      ros::shutdown();
+    }
+  }
+
+  Mat MatWithoutRow(const Mat &matIn, int row) {
+    // Removing a row
+    Mat matOut(matIn.rows - 1, matIn.cols, matIn.type()); // Result: matIn less that one row.
+    if (row > 0) // Copy everything above that one row.
     {
-      cv::Rect rect1( 0, row + 1, matIn.cols, matIn.rows - row - 1 );
-      cv::Rect rect2( 0, row, matIn.cols, matIn.rows - row - 1 );
-      matIn( rect1 ).copyTo( matOut( rect2 ) );
+      cv::Rect rect(0, 0, matIn.cols, row);
+      matIn(rect).copyTo(matOut(rect));
+    }
+
+    if (row < matIn.rows - 1) // Copy everything below that one row.
+    {
+      cv::Rect rect1(0, row + 1, matIn.cols, matIn.rows - row - 1);
+      cv::Rect rect2(0, row, matIn.cols, matIn.rows - row - 1);
+      matIn(rect1).copyTo(matOut(rect2));
     }
     return matOut;
   }
 
-  void RemovePoint(int point_number){
+  void RemovePoint(int point_number) {
     assert(point_number >= 0);
     assert(point_number < x_state_mean.feature_positions_w.size());
     StateMean new_state;
@@ -654,9 +711,9 @@ class MY_SLAM {
     Mat new_known_ORB_descriptors;
     vector<bool> is_included(x_state_mean.feature_positions_w.size(), true);
     is_included[point_number] = false;
-    new_state = ToSparseState(x_state_mean,is_included);
+    new_state = ToSparseState(x_state_mean, is_included);
     new_Sigma = ToSparseSigma(Sigma_state_cov, is_included);
-    new_known_ORB_descriptors = MatWithoutRow(known_ORB_descriptors,point_number);
+    new_known_ORB_descriptors = MatWithoutRow(known_ORB_descriptors, point_number);
     x_state_mean = new_state;
     Sigma_state_cov = new_Sigma;
     known_ORB_descriptors = new_known_ORB_descriptors;
@@ -666,17 +723,17 @@ class MY_SLAM {
     assert(pt_statistics.size() == known_ORB_descriptors.rows);
   }
 
-  void RemoveBadPoints(){
+  void RemoveBadPoints() {
     double most_traveled_distance = 0;
     int most_traveled_id = -1;
     double most_mean_sq_distance = 0;
     int most_sq_distance_id = -1;
-    for(int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt){
-      if(pt_statistics[i_pt].traveled_distance > most_traveled_distance){
+    for (int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt) {
+      if (pt_statistics[i_pt].traveled_distance > most_traveled_distance) {
         most_traveled_id = i_pt;
         most_traveled_distance = pt_statistics[i_pt].traveled_distance;
       }
-      if(pt_statistics[i_pt].mean_squared_detector_distance() > most_mean_sq_distance){
+      if (pt_statistics[i_pt].mean_squared_detector_distance() > most_mean_sq_distance) {
         most_mean_sq_distance = pt_statistics[i_pt].mean_squared_detector_distance();
         most_sq_distance_id = i_pt;
       }
@@ -686,8 +743,8 @@ class MY_SLAM {
     RemovePoint(most_sq_distance_id);
   }
 
-  void RemoveBadPoints2(){
-    if(pt_statistics.size() <= 8){
+  void RemoveBadPoints2() {
+    if (pt_statistics.size() <= 8) {
       return;
     }
     double sum_traveled_distance = 0;
@@ -695,8 +752,8 @@ class MY_SLAM {
     double sum_mean_exp_sq_distance = 0;
     double sum_mean_exp_unsim = 0;
     int found_count = 0;
-    for(int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt){
-      if(is_pt_found[i_pt]) {
+    for (int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt) {
+      if (is_pt_found[i_pt]) {
         found_count++;
         sum_traveled_distance += pt_statistics[i_pt].traveled_distance;
         sum_mean_sq_distance += pt_statistics[i_pt].mean_squared_detector_distance();
@@ -704,36 +761,37 @@ class MY_SLAM {
         sum_mean_exp_unsim += pt_statistics[i_pt].exp_mean_unsimilarity;
       }
     }
-    if(found_count <= 8){
+    if (found_count <= 10) {
       return;
     }
     double mean_traveled_distance = sum_traveled_distance / found_count;
     double mean_mean_sq_distance = sum_mean_sq_distance / found_count;
     double mean_exp_sq_distance = sum_mean_exp_sq_distance / found_count;
     double mean_exp_unsim = sum_mean_exp_unsim / found_count;
-    for(int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt){
-      if(pt_statistics[i_pt].n_observations > 3) {
+    for (int i_pt = 0; i_pt < pt_statistics.size(); ++i_pt) {
+      if (pt_statistics[i_pt].n_observations > 3) {
         if (
             (
 //            norm(pt_statistics[i_pt].initial_position - x_state_mean.feature_positions_w[i_pt]) > 30 ||
 //            pt_statistics[i_pt].traveled_distance > mean_traveled_distance * 2.6 ||
 //            pt_statistics[i_pt].mean_squared_detector_distance() > mean_mean_sq_distance * 2.3 ||
 //            pt_statistics[i_pt].mean_squared_detector_distance() > 40 ||
-//            pt_statistics[i_pt].exp_mean_squared_reproj_distance > mean_exp_sq_distance * 2.0
+//            pt_statistics[i_pt].exp_mean_squared_reproj_distance > 40 ||
 //            pt_statistics[i_pt].exp_mean_unsimilarity > mean_exp_unsim * 2.3 ||
-            pt_statistics[i_pt].exp_mean_unsimilarity > 60
+                pt_statistics[i_pt].exp_mean_unsimilarity > 60
             )
-            && (i_pt >= 4
-                ||frame_number > 200
-            ) &&
+//                && (i_pt >= 4
+//                    || frame_number > 200
+//                )
+                &&
                 is_pt_found[i_pt]
             ) {
           RemovePoint(i_pt);
         }
       }
     }
-    cout<<"rr Mean exp unsimilarity:"<<mean_exp_unsim<<endl;
-    cout<<"rr mean_mean_sq_distance:"<<mean_mean_sq_distance<<endl;
+    cout << "rr Mean exp unsimilarity:" << mean_exp_unsim << endl;
+    cout << "rr mean_mean_sq_distance:" << mean_mean_sq_distance << endl;
   }
 
   void DrawAxis() {
@@ -767,7 +825,8 @@ class MY_SLAM {
       int prob_argmax = 0;
       double max_prob = 0;
       const int MIN_DISTANCE_SEGMENT = 2;
-      for (int i_prob = MIN_DISTANCE_SEGMENT; i_prob < (*pt_it).prob_distribution.size(); ++i_prob) {
+      for (int i_prob = MIN_DISTANCE_SEGMENT; i_prob < (*pt_it).prob_distribution.size();
+           ++i_prob) {
         double prob = (*pt_it).prob_distribution[i_prob];
         if (prob > max_prob) {
           max_prob = prob;
@@ -840,17 +899,17 @@ class MY_SLAM {
     int search_radius = 45;
     //Todo: take covariance into account for search.
     vector<bool> should_be_found(predicted_points.size(), true);
-    for(int i_pt = 0; i_pt < predicted_points.size(); ++i_pt){
-      if(
+    for (int i_pt = 0; i_pt < predicted_points.size(); ++i_pt) {
+      if (
           predicted_points[i_pt].x <= 15 ||
-          predicted_points[i_pt].y <= 15 ||
-          predicted_points[i_pt].x >= current_frame.cols - 15 ||
-          predicted_points[i_pt].y >= current_frame.rows - 15
-          ){
+              predicted_points[i_pt].y <= 15 ||
+              predicted_points[i_pt].x >= current_frame.cols - 15 ||
+              predicted_points[i_pt].y >= current_frame.rows - 15
+          ) {
         should_be_found[i_pt] = false;
       }
     }
-    vector<double> descriptor_unsimilarity(x_state_mean.feature_positions_w.size(),0);
+    vector<double> descriptor_unsimilarity(x_state_mean.feature_positions_w.size(), 0);
     vector<Point2d> observations = GetMatchingPointsCoordinates(key_points,
                                                                 kp_descriptors,
                                                                 known_descriptors,
@@ -860,15 +919,15 @@ class MY_SLAM {
                                                                 &is_pt_found,
                                                                 &descriptor_unsimilarity);
     DrawPoints(output_mat, observations, 'o', 5, pt_statistics);
-    DrawPoints(output_mat, predicted_points, 'x', 5,pt_statistics);
-    DrawPoints(output_mat, predicted_points, 'c', search_radius,pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'x', 5, pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'c', search_radius, pt_statistics);
     assert(is_pt_found.size() == x_state_mean.feature_positions_w.size());
     for (int i_pt = 0; i_pt < is_pt_found.size(); ++i_pt) {
       pt_statistics[i_pt].update_exp_mean_unsimilarity(descriptor_unsimilarity[i_pt]);
       if (is_pt_found[i_pt]) {
         pt_statistics[i_pt].n_observations++;
       } else {
-        if(should_be_found[i_pt]) {
+        if (should_be_found[i_pt]) {
           pt_statistics[i_pt].update_mean_squared_reproj_distance(search_radius);
         }
       }
@@ -916,7 +975,7 @@ class MY_SLAM {
     //yes, x_pred
     Mat H_t = H_t_Jacobian_of_observations(x_state_mean_pred, camera_intrinsic);
     innovation_cov = S_t_innovation_cov(H_t, Sigma_state_cov_pred, pixel_noise);
-    Mat KalmanGain =Sigma_state_cov_pred * H_t.t() * innovation_cov.inv();
+    Mat KalmanGain = Sigma_state_cov_pred * H_t.t() * innovation_cov.inv();
     Mat stateMat_pred = state2mat(x_state_mean_pred);
     StateMean x_state_mean_new = StateMean(stateMat_pred + KalmanGain * observations_diff);
 
@@ -939,9 +998,11 @@ class MY_SLAM {
 
     vector<Point2d> reprojected_points;
     reprojected_points = FeaturesProjections(x_state_mean_new, camera_intrinsic);
-    obstacles_for_new_points.insert(obstacles_for_new_points.end(), reprojected_points.begin(), reprojected_points.end());
+    obstacles_for_new_points.insert(obstacles_for_new_points.end(),
+                                    reprojected_points.begin(),
+                                    reprojected_points.end());
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
-      if(is_pt_found[i_pt]) {
+      if (is_pt_found[i_pt]) {
         pt_statistics[i_pt].update_mean_squared_reproj_distance(
             norm(reprojected_points[i_pt] - observations[i_pt]));
       }
@@ -980,17 +1041,17 @@ class MY_SLAM {
     int search_radius = 45;
     //Todo: take covariance into account for search.
     vector<bool> should_be_found(predicted_points.size(), true);
-    for(int i_pt = 0; i_pt < predicted_points.size(); ++i_pt){
-      if(
+    for (int i_pt = 0; i_pt < predicted_points.size(); ++i_pt) {
+      if (
           predicted_points[i_pt].x <= 15 ||
               predicted_points[i_pt].y <= 15 ||
               predicted_points[i_pt].x >= current_frame.cols - 15 ||
               predicted_points[i_pt].y >= current_frame.rows - 15
-          ){
+          ) {
         should_be_found[i_pt] = false;
       }
     }
-    vector<double> descriptor_unsimilarity(x_state_mean.feature_positions_w.size(),0);
+    vector<double> descriptor_unsimilarity(x_state_mean.feature_positions_w.size(), 0);
     vector<Point2d> observations = GetMatchingPointsCoordinates(key_points,
                                                                 kp_descriptors,
                                                                 known_descriptors,
@@ -1000,15 +1061,15 @@ class MY_SLAM {
                                                                 &is_pt_found,
                                                                 &descriptor_unsimilarity);
     DrawPoints(output_mat, observations, 'o', 7, pt_statistics);
-    DrawPoints(output_mat, predicted_points, 'x', 5,pt_statistics);
-    DrawPoints(output_mat, predicted_points, 'c', search_radius,pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'x', 5, pt_statistics);
+    DrawPoints(output_mat, predicted_points, 'c', search_radius, pt_statistics);
     assert(is_pt_found.size() == x_state_mean.feature_positions_w.size());
     for (int i_pt = 0; i_pt < is_pt_found.size(); ++i_pt) {
       pt_statistics[i_pt].update_exp_mean_unsimilarity(descriptor_unsimilarity[i_pt]);
       if (is_pt_found[i_pt]) {
         pt_statistics[i_pt].n_observations++;
       } else {
-        if(should_be_found[i_pt]) {
+        if (should_be_found[i_pt]) {
           pt_statistics[i_pt].update_mean_squared_reproj_distance(search_radius);
         }
       }
@@ -1087,7 +1148,9 @@ class MY_SLAM {
     assert(isSemiPositive(sparse_Sigma_state_cov_new));
     assert(isSemiPositive(Sigma_state_cov_pred));
     Mat Sigma_state_cov_new =
-        UpdateFromSparse(Sigma_state_cov_pred, sparse_Sigma_state_cov_new, is_colrow_included); //Todo: this line breaks semi-positivity
+        UpdateFromSparse(Sigma_state_cov_pred,
+                         sparse_Sigma_state_cov_new,
+                         is_colrow_included); //Todo: this line breaks semi-positivity
     assert(isSemiPositive(Sigma_state_cov_new));
 
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
@@ -1100,9 +1163,12 @@ class MY_SLAM {
 
     vector<Point2d> reprojected_points;
     reprojected_points = FeaturesProjections(x_state_mean_new, camera_intrinsic);
-    obstacles_for_new_points.insert(obstacles_for_new_points.end(), reprojected_points.begin(), reprojected_points.end());
+    obstacles_for_new_points.insert(obstacles_for_new_points.end(),
+                                    reprojected_points.begin(),
+                                    reprojected_points.end());
     for (int i_pt = 0; i_pt < x_state_mean.feature_positions_w.size(); ++i_pt) {
-      pt_statistics[i_pt].update_mean_squared_reproj_distance (norm(reprojected_points[i_pt] - observations[i_pt]));
+      pt_statistics[i_pt].update_mean_squared_reproj_distance(norm(
+          reprojected_points[i_pt] - observations[i_pt]));
     }
     DrawPoints(output_mat, reprojected_points, '+', 5, pt_statistics);
 
@@ -1133,7 +1199,7 @@ class MY_SLAM {
   constexpr static const double initial_direction_uncertainty = 0.2;
   constexpr static const double initial_speed_uncertainty = 0.01;
   constexpr static const double initial_angular_speed_uncertainty = 0.1;
-  double points_init_prob_threshold = 0.6;
+  double points_init_prob_threshold = 0.4;
   int frames_per_new_point = 1;
   MY_SLAM()
       : it_(nh_) {
@@ -1142,25 +1208,11 @@ class MY_SLAM {
                                &MY_SLAM::subscription_callback, this);
     pub = nh_.advertise<sensor_msgs::PointCloud2>("output", 1);
 
-    Sigma_state_cov = initial_map_uncertainty * Mat::eye(25, 25, CV_64F);
-    Sigma_state_cov.at<double>(0, 0) = initial_pos_uncertainty;
-    Sigma_state_cov.at<double>(1, 1) = initial_pos_uncertainty;
-    Sigma_state_cov.at<double>(2, 2) = initial_pos_uncertainty;
-    Sigma_state_cov.at<double>(3, 3) = initial_direction_uncertainty;
-    Sigma_state_cov.at<double>(4, 4) = initial_direction_uncertainty;
-    Sigma_state_cov.at<double>(5, 5) = initial_direction_uncertainty;
-    Sigma_state_cov.at<double>(6, 6) = initial_direction_uncertainty;
-    Sigma_state_cov.at<double>(7, 7) = initial_speed_uncertainty;
-    Sigma_state_cov.at<double>(8, 8) = initial_speed_uncertainty;
-    Sigma_state_cov.at<double>(9, 9) = initial_speed_uncertainty;
-    Sigma_state_cov.at<double>(10, 10) = initial_angular_speed_uncertainty;
-    Sigma_state_cov.at<double>(11, 11) = initial_angular_speed_uncertainty;
-    Sigma_state_cov.at<double>(12, 12) = initial_angular_speed_uncertainty;
-
     Pn_noise_cov = position_speed_noise * Mat::eye(6, 6, CV_64F); //todo: init properly
     Pn_noise_cov.at<double>(3, 3) = angular_speed_noise;
     Pn_noise_cov.at<double>(4, 4) = angular_speed_noise;
     Pn_noise_cov.at<double>(5, 5) = angular_speed_noise;
+
     x_state_mean.angular_velocity_r =
         Point3d(0.000000000001,
                 0,
@@ -1185,26 +1237,8 @@ class MY_SLAM {
      *
      * In local coordinates, camera looks from 0 to Z axis. Like here.
      */
-    x_state_mean.feature_positions_w.push_back(Point3d(-40, -4, 125.3)); //cm
-    x_state_mean.feature_positions_w.push_back(Point3d(-40, -41, 125.3));
-    x_state_mean.feature_positions_w.push_back(Point3d(40, -41, 125.3));
-    x_state_mean.feature_positions_w.push_back(Point3d(40, -4, 125.3));
 
-//    x_state_mean.feature_positions_w.push_back(Point3d(-37.5, -6.5, 125.3)); //cm
-//    x_state_mean.feature_positions_w.push_back(Point3d(-37.5, -39.5, 125.3));
-//    x_state_mean.feature_positions_w.push_back(Point3d(37.5, -39.5, 125.3));
-//    x_state_mean.feature_positions_w.push_back(Point3d(37.5, -6.5, 125.3));
-
-    PointStatistics stat0;
-    stat0.first_frame = 0; // TODO: or 1 ?
-    stat0.traveled_distance = 0;
-    stat0.sum_squared_reproj_distance = 0;
-    stat0.n_observations = 0;
-    pt_statistics.resize(4, stat0);
-    for(int i = 0; i < 4; i++) {
-      pt_statistics[i].initial_position = x_state_mean.feature_positions_w[i];
-      pt_statistics[i].uid = points_uid_counter++;
-    }
+//    ManualInitialization();
 
     int nfeatures = 5000;
     float scaleFactor = 1.2f;
@@ -1229,6 +1263,99 @@ class MY_SLAM {
     );
   }
 
+  void ManualInitialization() {
+    Sigma_state_cov = initial_map_uncertainty * Mat::eye(25, 25, CV_64F);
+    Sigma_state_cov.at<double>(0, 0) = initial_pos_uncertainty;
+    Sigma_state_cov.at<double>(1, 1) = initial_pos_uncertainty;
+    Sigma_state_cov.at<double>(2, 2) = initial_pos_uncertainty;
+    Sigma_state_cov.at<double>(3, 3) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(4, 4) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(5, 5) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(6, 6) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(7, 7) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(8, 8) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(9, 9) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(10, 10) = initial_angular_speed_uncertainty;
+    Sigma_state_cov.at<double>(11, 11) = initial_angular_speed_uncertainty;
+    Sigma_state_cov.at<double>(12, 12) = initial_angular_speed_uncertainty;
+
+    x_state_mean.feature_positions_w.push_back(Point3d(-40, -4, 125.3)); //cm
+    x_state_mean.feature_positions_w.push_back(Point3d(-40, -41, 125.3));
+    x_state_mean.feature_positions_w.push_back(Point3d(40, -41, 125.3));
+    x_state_mean.feature_positions_w.push_back(Point3d(40, -4, 125.3));
+
+//    x_state_mean.feature_positions_w.push_back(Point3d(-37.5, -6.5, 125.3)); //cm
+//    x_state_mean.feature_positions_w.push_back(Point3d(-37.5, -39.5, 125.3));
+//    x_state_mean.feature_positions_w.push_back(Point3d(37.5, -39.5, 125.3));
+//    x_state_mean.feature_positions_w.push_back(Point3d(37.5, -6.5, 125.3));
+
+    PointStatistics stat0;
+    stat0.first_frame = 0; // TODO: or 1 ?
+    stat0.traveled_distance = 0;
+    stat0.sum_squared_reproj_distance = 0;
+    stat0.n_observations = 0;
+    pt_statistics.resize(4, stat0);
+    for (int i = 0; i < 4; i++) {
+      pt_statistics[i].initial_position = x_state_mean.feature_positions_w[i];
+      pt_statistics[i].uid = points_uid_counter++;
+    }
+    operating_mode = MAP_AND_TRACK;
+  }
+
+  void AutomaticInitialization(const Mat &frame0, const Mat &frame1) {
+    vector<pcl::PointXYZRGB> triangulated_points;
+    vector<Mat> covs;
+    Mat tri_descriptors;
+    Triangulate2Frames(frame0,
+                       frame1,
+                       camera_intrinsic,
+                       &triangulated_points,
+                       &covs,
+                       tri_descriptors);
+    for (auto &&point:triangulated_points) {
+      Point3d p3d(point.x, point.y, point.z);
+      x_state_mean.feature_positions_w.push_back(p3d);
+    }
+    known_ORB_descriptors = tri_descriptors.clone();
+
+    static_assert(N_VARS_FOR_CAMERA == 13, "change 13 here VV");
+    Sigma_state_cov =
+        Mat(13 + 3 * triangulated_points.size(),
+            13 + 3 * triangulated_points.size(),
+            CV_64F,
+            Scalar(0));
+    Sigma_state_cov.at<double>(0, 0) = initial_pos_uncertainty;
+    Sigma_state_cov.at<double>(1, 1) = initial_pos_uncertainty;
+    Sigma_state_cov.at<double>(2, 2) = initial_pos_uncertainty;
+    Sigma_state_cov.at<double>(3, 3) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(4, 4) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(5, 5) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(6, 6) = initial_direction_uncertainty;
+    Sigma_state_cov.at<double>(7, 7) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(8, 8) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(9, 9) = initial_speed_uncertainty;
+    Sigma_state_cov.at<double>(10, 10) = initial_angular_speed_uncertainty;
+    Sigma_state_cov.at<double>(11, 11) = initial_angular_speed_uncertainty;
+    Sigma_state_cov.at<double>(12, 12) = initial_angular_speed_uncertainty;
+    for (int i = 0; i < triangulated_points.size(); i++) {
+      Mat sigma_reg =
+          Sigma_state_cov(Rect(N_VARS_FOR_CAMERA + 3 * i, N_VARS_FOR_CAMERA + 3 * i, 3, 3));
+      covs[i].copyTo(sigma_reg);
+    }
+
+    PointStatistics stat0;
+    stat0.first_frame = 0; // TODO: or 1 ?
+    stat0.traveled_distance = 0;
+    stat0.sum_squared_reproj_distance = 0;
+    stat0.n_observations = 0;
+    pt_statistics.resize(triangulated_points.size(), stat0);
+    for (int i = 0; i < triangulated_points.size(); i++) {
+      pt_statistics[i].initial_position = x_state_mean.feature_positions_w[i];
+      pt_statistics[i].uid = points_uid_counter++;
+    }
+
+    operating_mode = MAP_AND_TRACK;
+  }
 
   ~MY_SLAM() {
   }

@@ -294,7 +294,7 @@ bool isTriangular(const Mat &m, double eps){
 }
 
 
-bool Triangulize(Mat *m, double eps){
+bool Symetrize(Mat *m, double eps){
   assert(m->rows == m->cols);
   assert(m->type() == CV_64F);
   bool was_triangular = true;

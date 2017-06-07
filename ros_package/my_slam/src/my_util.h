@@ -64,7 +64,7 @@ vector<Point2d> ToSparseVec(const vector<Point2d> &full_vec, const vector<bool> 
 
 bool isTriangular(const Mat &m, double eps = 0.00001);
 
-bool Triangulize(Mat *m, double eps = 0.00001);
+bool Symetrize(Mat *m, double eps = 0.1);
 
 bool isSemiPositive(const Mat &m);
 

@@ -19,6 +19,11 @@
 using namespace std;
 using namespace cv;
 
-void Triangulate2Frames(cv::Mat frame1, cv::Mat frame2, const Mat & camera_intrinsic,vector<pcl::PointXYZRGB> *points, Mat out_points_cov);
+void Triangulate2Frames(cv::Mat frame1,
+                        cv::Mat frame2,
+                        const Mat &camera_intrinsic,
+                        vector<pcl::PointXYZRGB> *points,
+                        vector<Mat> *out_points_covs,
+                        Mat &out_descriptors);
 
 #endif //MY_SLAM_TRIANGULATION_H

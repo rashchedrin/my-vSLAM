@@ -10,6 +10,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include "opencv2/opencv.hpp"
+#include "my_geometry.h"
+#include "my_util.h"
 
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
@@ -91,7 +93,6 @@ projectionsFromFundamental(InputArray _F,
   }
 
 }
-
 
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 
@@ -216,7 +217,6 @@ void FindFeatures(const Mat &frame1,
                   vector<KeyPoint> &keypoints1,
                   vector<KeyPoint> &keypoints2);
 
-
 Mat NewExtrinsics(const Mat &prev_extrinsics, const Mat rotation, const Mat translation) {
   //todo:test
   Mat new_extrinsics = prev_extrinsics.clone();
@@ -247,7 +247,61 @@ Mat NewExtrinsicMatrixFromEssential(const Mat &prev_extrinsic,
   return NewExtrinsics(prev_extrinsic, rotation, translation);
 }
 
-void Triangulate2Frames(cv::Mat frame1, cv::Mat frame2, const Mat & camera_intrinsic,vector<pcl::PointXYZRGB> *points, Mat out_points_cov){
+void DrawAll(const vector<KeyPoint> &keypoints1,
+             const vector<KeyPoint> &keypoints2,
+             int N_matches,
+             const vector<Point2f> &corrected_points_1,
+             const vector<Point2f> &corrected_points_2,
+             Mat &frame1,
+             Mat &frame2) {
+  Size sz1 = frame1.size();
+  Size sz2 = frame2.size();
+  Mat display_matrix(sz1.height, sz1.width + sz2.width, CV_8UC3);
+  Mat img1(display_matrix, Rect(0, 0, sz1.width, sz1.height));
+  frame1.copyTo(img1);
+  Mat img2(display_matrix, Rect(sz1.width, 0, sz2.width, sz2.height));
+  frame2.copyTo(img2);
+  drawKeypoints(img1, keypoints1, img1, Scalar({20, 240, 20}));
+  drawKeypoints(img2, keypoints2, img2, Scalar({20, 240, 20}));
+
+  vector<KeyPoint> keypoints1_cor;
+  vector<KeyPoint> keypoints2_cor;
+  for (size_t i = 0; i < corrected_points_1.size(); i++) {
+    keypoints1_cor.push_back(KeyPoint(corrected_points_1[i], 1.f));
+    keypoints2_cor.push_back(KeyPoint(corrected_points_2[i], 1.f));
+  }
+//    drawKeypoints(img1, keypoints1_cor, img1, Scalar({220, 20, 20}));
+//    drawKeypoints(img2, keypoints2_cor, img2, Scalar({220, 20, 20}));
+
+  for (int i_match = 0; i_match < N_matches; ++i_match) {
+    line(display_matrix,
+         keypoints1_cor[i_match].pt,
+         keypoints2_cor[i_match].pt + Point2f(sz1.width, 0),
+         hashcolor(i_match, 4));
+  }
+  for (int i_match = 0; i_match < N_matches; ++i_match) {
+    circle(img1, keypoints1_cor[i_match].pt, 2, hashcolor(i_match, 2), 2);
+    circle(img1, keypoints1_cor[i_match].pt, 3, hashcolor(i_match, 3));
+    circle(img1, keypoints1_cor[i_match].pt, 4, hashcolor(i_match, 4));
+
+    circle(img2, keypoints2_cor[i_match].pt, 2, hashcolor(i_match, 2), 2);
+    circle(img2, keypoints2_cor[i_match].pt, 3, hashcolor(i_match, 3));
+    circle(img2, keypoints2_cor[i_match].pt, 4, hashcolor(i_match, 4));
+  }
+  imshow("display_matrix", display_matrix);
+}
+
+void Triangulate2Frames(cv::Mat frame1,
+                        cv::Mat frame2,
+                        const Mat &camera_intrinsic,
+                        vector<pcl::PointXYZRGB> *points,
+                        vector<Mat> *out_points_covs,
+                        Mat &out_descriptors) {
+  assert(frame1.rows > 0);
+  assert(frame1.cols > 0);
+  assert(frame2.rows > 0);
+  assert(frame2.cols > 0);
+  //todo: set out_descriptors and out_pt_cov
   Mat descriptors1;
   Mat descriptors2;
   vector<KeyPoint> keypoints1;
@@ -274,6 +328,13 @@ void Triangulate2Frames(cv::Mat frame1, cv::Mat frame2, const Mat & camera_intri
   KeyPoint::convert(keypoints1, points1, queryIdxs);
   vector<Point2f> points2;
   KeyPoint::convert(keypoints2, points2, trainIdxs);
+
+  //2.2 arrange descriptors
+  out_descriptors = descriptors1.clone();
+  for (int i = 0; i < queryIdxs.size(); ++i) {
+    descriptors1.row(queryIdxs[i]).copyTo(out_descriptors.row(i));
+  }
+  out_descriptors.resize(points1.size());
 
   //3. Estimate Fundamental matrix
   Mat fundamental_mat = findFundamentalMat(points1, points2);
@@ -329,6 +390,22 @@ void Triangulate2Frames(cv::Mat frame1, cv::Mat frame2, const Mat & camera_intri
     point3d.z = z;
     points->push_back(point3d);
   }
+
+  //7. set covariances
+
+  out_points_covs->resize(0);
+  for (int i_pt = 0; i_pt < N_matches; ++i_pt) {
+    Vec3d rel_ray = RayFromXY_rel(points1[i_pt].x, points1[i_pt].y, camera_intrinsic);
+    int uncertainty_length = 200;// todo: calculate properly
+    Mat sigma3d = CovarianceAlongLine(rel_ray[0],
+                                      rel_ray[1],
+                                      rel_ray[2],
+                                      uncertainty_length, // todo: calculate properly
+                                      0.02 * uncertainty_length);
+    out_points_covs->push_back(sigma3d.clone());
+  }
+
+//  DrawAll(keypoints1, keypoints2, N_matches,corrected_points_1, corrected_points_2,frame1,frame2);
 }
 
 void FindFeatures(const Mat &frame1,
@@ -338,19 +415,32 @@ void FindFeatures(const Mat &frame1,
                   vector<KeyPoint> &keypoints1,
                   vector<KeyPoint> &keypoints2) {
 //Default ORB parameters
+  int nfeatures = 300;
   float scaleFactor = 1.2f;
-  int nfeatures = 2000;
   int nlevels = 8;
   int edgeThreshold = 15; // Changed default (31);
+  int firstLevel = 0;
+  int WTA_K = 2;
+  int scoreType = ORB::HARRIS_SCORE;
+  int patchSize = 31;
+  int fastThreshold = 20;
+
   Ptr<ORB> detector = ORB::create(
       nfeatures,
       scaleFactor,
       nlevels,
-      edgeThreshold
+      edgeThreshold,
+      firstLevel,
+      WTA_K,
+      scoreType,
+      patchSize,
+      fastThreshold
   );
   detector->detectAndCompute(frame1, noArray(), keypoints1, descriptors1);
   detector->detectAndCompute(frame2, noArray(), keypoints2, descriptors2);
 }
+
+
 
 void getTwoFrames(String filename, int frame_n1, int frame_n2, Mat *out1, Mat *out2) {
   VideoCapture cap(filename);
